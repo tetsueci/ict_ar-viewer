@@ -1,0 +1,68 @@
+/* 現場 AR 位置合わせ：見た目（全フォルダ共通） */
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --text: #1d2330; --muted: #5f6878;
+  --line: #dde1e7; --accent: #1a6fd6; --accent-text: #ffffff; --warn: #b3261e;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171c; --panel: #1d2128; --text: #e6e9ee; --muted: #9aa3b2; --line: #2e343d; --accent: #4b93ee; --accent-text: #0b0e12; --warn: #ff8a80; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; }
+.page { max-width: 760px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 19px; margin: 4px 0; }
+.muted { color: var(--muted); font-size: 13px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 14px 0; }
+.card h2 { font-size: 15px; margin: 0 0 8px; }
+ol, ul { margin: 0; padding-left: 1.3em; line-height: 1.7; font-size: 14px; }
+table { border-collapse: collapse; font-size: 14px; width: 100%; }
+th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: right; }
+th:first-child, td:first-child, th:last-child, td:last-child { text-align: left; }
+img.plan { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.start { display: block; width: 100%; padding: 14px; border: 0; border-radius: 999px; background: var(--accent);
+  color: var(--accent-text); font: inherit; font-size: 16px; font-weight: 600; }
+.start:disabled { opacity: .45; }
+#support { margin-top: 8px; font-size: 13px; color: var(--warn); }
+#support a { color: inherit; }
+
+/* ---- AR 中の画面 ---- */
+#overlay { display: none; position: fixed; inset: 0; pointer-events: none; color: #fff;
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; }
+#overlay.on { display: block; }
+#gest { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
+#overlay.aligning #gest { pointer-events: auto; }
+.top { position: absolute; left: 8px; right: 8px; top: 8px; background: rgba(15,18,22,.78);
+  border-radius: 12px; padding: 8px 12px; font-size: 14px; line-height: 1.45; pointer-events: auto; }
+.top b { font-size: 16px; }
+.mode { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-right: 6px; vertical-align: 1px; }
+.mode.lock { background: #2b8a3e; }
+.mode.adj { background: #e8590c; }
+#info, #check, #live { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+#info { color: #ffe0b2; margin-top: 3px; }
+#check { color: #cfe3ff; margin-top: 2px; }
+#check.bad { color: #ffb4a9; }
+#live { color: #d7f5d0; margin-top: 2px; }
+.panel { position: absolute; left: 0; right: 0; bottom: 10px; padding: 0 8px; pointer-events: none;
+  display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; pointer-events: auto; }
+.row { gap: 5px; flex-wrap: nowrap; }
+#overlay button { border: 0; border-radius: 10px; padding: 10px 7px; font: inherit; font-size: 13px; white-space: nowrap;
+  background: rgba(255,255,255,.92); color: #14171c; }
+#overlay button.big { font-size: 16px; font-weight: 700; padding: 13px 22px; border-radius: 999px; }
+#overlay button.blue { background: #1a6fd6; color: #fff; }
+#overlay button.orange { background: #e8590c; color: #fff; }
+#overlay button.green { background: #2b8a3e; color: #fff; }
+#overlay button.sel { outline: 3px solid #ffd43b; }
+#overlay button:disabled { opacity: .4; }
+.adjonly { display: none !important; }
+#overlay.aligning .adjonly { display: flex !important; }
+#overlay.aligning .lockonly { display: none !important; }
+.scaleonly { display: none !important; }
+#overlay.aligning.scaling .scaleonly { display: flex !important; }
+/* 点群（config.json の pointcloud）があるときだけ出す */
+body:not(.hascloud) .cloudonly, body:not(.hascloud) #overlay .cloudonly { display: none !important; }
+#live.bad { color: #ffb4a9; }
+/* パスワード（config.json の enc があるときだけ出す） */
+#pwcard input { width: 100%; padding: 12px; font: inherit; font-size: 16px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--bg); color: var(--text); margin: 4px 0 8px; }
+#pwmsg { font-size: 13px; color: var(--warn); min-height: 1.2em; }

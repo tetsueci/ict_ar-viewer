@@ -1,0 +1,12 @@
+{
+  "name": "ar-model-viewer-tools",
+  "private": true,
+  "description": "GLB を小さくする道具（tools/compress.mjs）だけに使う。ページ自体は CDN から読むので要らない",
+  "type": "module",
+  "devDependencies": {
+    "@gltf-transform/core": "4.5.0",
+    "@gltf-transform/extensions": "4.5.0",
+    "@gltf-transform/functions": "4.5.0",
+    "meshoptimizer": "1.2.0"
+  }
+}

@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+
+node_modules/
+
+# 暗号化する前の中身（tools/encrypt_site.py の入力）。公開しない
+_plain/
+
+# 念のため：平文のモデル・画像・点群は置かない（暗号化したものは .enc）
+*.glb
+*.png
+*.jpg
+*.las
+*.laz
+*.ifc
+*.dxf

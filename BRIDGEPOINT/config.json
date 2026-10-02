@@ -1,0 +1,14 @@
+{
+  "title": "BRIDGEPOINT",
+  "version": "20261002094004",
+  "model": "model.glb.enc",
+  "plan": "plan.png.enc",
+  "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
+  "pointcloud": "pointcloud.glb.enc",
+  "enc": {
+    "kdf": "PBKDF2-SHA256",
+    "iter": 600000,
+    "salt": "iclBz0BSv8PIWxrrL1vYGw==",
+    "secret": "bhNXI3NT4M+5S+0Fzm78y2jfGvZccbjKkpVXQi1mdVappP5w5exxmgv3nVavvd2wjyKnCcNWXD03CVsA1eiuIpOAfYjS+4lpYnnjcG/Uy/VUiZ2Okb9EkEFzngHdJw7Dk+qI+fgwn17YYl/7RZpdG3fvM4OSe/1zwe4/6ZAdjmrU2/mZBtQoN8xLXSQqF4S/Jwsfcj/EJhVryGk0LQr7vVDCRMFtLCBBGElb5hLKTaA9TumsJOrq8bUnIMghmXR340WGBDlVXloj/4O7Xjm5XKC4QEdOtGZ4De0UxWJp4hSIooRwM18JI1D64+6OVU8bSLZ23SMi/cBlRso3kNuNI8jJ5KSmUwzFRuG6jfa+2hW+NadRS862lernU6rVjB+yOaRUofCN1R0ml5petrMJwhJj0TqiEbIBtCnMfmmaR0szcE5OJHUHULCTDexZPV+uAxGtq0E+GvkI2B6zDxuYM2b1L+DeTjZZXwE="
+  }
+}
