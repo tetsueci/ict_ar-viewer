@@ -949,13 +949,20 @@ function pickAt(x, y) {
   if (!cloud || !placed) return;
   const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
   ray.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1), cam);
-  ray.params.Points.threshold = 0.15;
+  // 光線のまわりを広めに拾い、画面の上でタップした所にいちばん近く見える点を取る。
+  // （光線にいちばん近い点で選ぶと、地面を斜めに見たとき光線が手前で地面をかすめ、手前の点を取ってしまう）
+  ray.params.Points.threshold = 3;
   const hits = ray.intersectObject(cloud, true);
-  if (!hits.length) { $('check').className = 'bad'; $('check').textContent = '点群に当たりませんでした。点の上をタップしてください'; return; }
-  const near = hits.filter(h => h.distance <= hits[0].distance + 1.0);       // いちばん手前のかたまりの中で
-  const h = near.reduce((a, b) => (b.distanceToRay < a.distanceToRay ? b : a));
-  const v = new THREE.Vector3().fromBufferAttribute(h.object.geometry.getAttribute('position'), h.index)
-    .applyMatrix4(h.object.matrixWorld).applyMatrix4(tmpM.copy(group.matrixWorld).invert());
+  const inv = new THREE.Matrix4().copy(cam.matrixWorld).invert();
+  const cand = hits.map(h => {
+    const wp = new THREE.Vector3().fromBufferAttribute(h.object.geometry.getAttribute('position'), h.index).applyMatrix4(h.object.matrixWorld);
+    const c = wp.clone().applyMatrix4(inv), n = c.clone().applyMatrix4(cam.projectionMatrix);
+    return { wp, depth: -c.z, px: Math.hypot((n.x + 1) / 2 * innerWidth - x, (1 - n.y) / 2 * innerHeight - y) };
+  }).filter(c => c.depth > 0 && c.px < 24);
+  if (!cand.length) { $('check').className = 'bad'; $('check').textContent = '点群に当たりませんでした。点の上をタップしてください'; return; }
+  const pmin = Math.min(...cand.map(c => c.px));
+  const best = cand.filter(c => c.px <= pmin + 3).reduce((a, b) => (b.depth < a.depth ? b : a));   // ほぼ同じ所に見えるなら手前の点
+  const v = best.wp.applyMatrix4(tmpM.copy(group.matrixWorld).invert());
   if (SIMPLE) { setSimplePoint(pickSlot, v); return; }
   const site = glToSite(v);
   const now = new Date();
