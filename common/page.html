@@ -2,16 +2,21 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<!-- 各フォルダの index.html のひな形（dxf_to_site.py が新しいフォルダへ写す）。
+<!-- 各フォルダの index.html のひな形（tools/glb.py の copy_page が新しいフォルダへ写す）。
      ページの中身と動きは ../common/ にあり、どのフォルダも同じものを使う。
      フォルダには config.json・model.glb・plan.png だけを置く。このファイルは直さない -->
-<script src="../common/vlaunch.js"></script>
+<script>
+// common/ を直したら再読み込みですぐ効くように、読むたびに番号を付けて読む
+// （GitHub Pages は 10 分覚えさせるので、番号が無いとスマホが古い align.js を使い続ける）
+var V = '?v=' + Date.now();
+document.write('<script src="../common/vlaunch.js' + V + '"><' + '/script>');
+document.write('<link rel="stylesheet" href="../common/align.css' + V + '">');
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>現場 AR 位置合わせ</title>
 <meta name="description" content="基準点でモデルを現場の位置に合わせる AR（Android の Chrome・iPhone）">
-<link rel="stylesheet" href="../common/align.css">
 </head>
 <body>
-<script type="module" src="../common/align.js"></script>
+<script type="module">import("../common/align.js" + V);</script>
 </body>
 </html>
