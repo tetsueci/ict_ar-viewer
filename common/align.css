@@ -66,3 +66,20 @@ body:not(.hascloud) .cloudonly, body:not(.hascloud) #overlay .cloudonly { displa
 #pwcard input { width: 100%; padding: 12px; font: inherit; font-size: 16px; border: 1px solid var(--line);
   border-radius: 8px; background: var(--bg); color: var(--text); margin: 4px 0 8px; }
 #pwmsg { font-size: 13px; color: var(--warn); min-height: 1.2em; }
+/* ui: simple（AR の前に点群で 2 点を選ぶ・AR の中は ① ② のボタンだけ） */
+body:not(.simple) .simpleonly { display: none !important; }
+body.simple .simpleonly { display: block; }
+body.simple .simpleonly[hidden] { display: block; }
+body.simple .fullonly { display: none !important; }
+.pickbtns { display: flex; gap: 8px; margin-bottom: 8px; }
+.pickbtns .pk { flex: 1; border: 0; border-radius: 999px; padding: 10px; font: inherit; font-size: 15px; font-weight: 600; color: #fff; }
+.pickbtns .pk.blue { background: #1a6fd6; }
+.pickbtns .pk.orange { background: #e8590c; }
+.pickbtns .pk.sel { outline: 3px solid #ffd43b; outline-offset: 1px; }
+#pickview { width: 100%; border-radius: 8px; overflow: hidden; touch-action: none; line-height: 0; }
+#pickview canvas { display: block; touch-action: none; }
+#pickinfo { margin-top: 8px; font-variant-numeric: tabular-nums; line-height: 1.6; }
+.simplerow { display: none !important; }
+#overlay.simple .row { display: none !important; }
+#overlay.simple .simplerow { display: flex !important; }
+#overlay.simple #gest { pointer-events: none !important; }

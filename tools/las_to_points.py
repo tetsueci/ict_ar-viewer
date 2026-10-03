@@ -103,11 +103,9 @@ def main():
         if r:
             print(f"圧縮 {raw / 1e6:.2f} MB → {os.path.getsize(path) / 1e6:.2f} MB（座標の刻み {r['stepMM']} mm）")
     cfg["pointcloud"] = a.name                    # common/align.js はこれがあれば点群も読む
-    with open(os.path.join(out, "config.json"), "w", encoding="utf-8", newline="
-") as fo:
+    with open(os.path.join(out, "config.json"), "w", encoding="utf-8", newline="\n") as fo:
         json.dump(cfg, fo, ensure_ascii=False, indent=2)
-        fo.write("
-")
+        fo.write("\n")
     lo, hi = p.min(axis=0) + O, p.max(axis=0) + O
     print(f"{a.name}  {len(p):,} 点（元 {n:,} 点・格子 {v} m）  {os.path.getsize(path) / 1e6:.2f} MB  {time.time() - t0:.0f} 秒")
     print(f"  範囲 X {lo[0]:.2f}〜{hi[0]:.2f}  Y {lo[1]:.2f}〜{hi[1]:.2f}  Z {lo[2]:.2f}〜{hi[2]:.2f}")

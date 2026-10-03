@@ -24,7 +24,28 @@ document.body.insertAdjacentHTML('afterbegin', `
     <div id="pwmsg"></div>
   </div>
 
-  <div class="card">
+  <div class="card simpleonly" hidden>
+    <h2>使い方</h2>
+    <ol>
+      <li>下の点群の上で、現地で見つけやすい所（白線の角・マンホールの中心など）を <b>P1</b>・<b>P2</b> の 2 か所タップして選ぶ。
+        2 点は離すほど向きが正確になる</li>
+      <li>「AR を始める」→ 地面を映してスマホをゆっくり動かす（十字が地面に張り付くまで）</li>
+      <li>十字を現地の <b>P1</b> の場所に当てて「① P1 をここ」</li>
+      <li>十字を現地の <b>P2</b> の場所に当てて「② P2 をここ」。これで合う。ずれたら ① からやり直す</li>
+    </ol>
+  </div>
+
+  <div class="card simpleonly" id="pickcard" hidden>
+    <h2>基準点を 2 つ選ぶ</h2>
+    <div class="pickbtns">
+      <button id="selP1" class="pk blue sel" type="button">P1 を選ぶ</button>
+      <button id="selP2" class="pk orange" type="button">P2 を選ぶ</button>
+    </div>
+    <div id="pickview"></div>
+    <div id="pickinfo" class="muted">点群を読んでいます…（1 本指で動かす・2 本指で拡大）</div>
+  </div>
+
+  <div class="card fullonly">
     <h2>使い方</h2>
     <ol>
       <li>「AR を始める」→ 地面を映してスマホをゆっくり動かす（十字が地面に張り付くまで）</li>
@@ -43,7 +64,7 @@ document.body.insertAdjacentHTML('afterbegin', `
     </ol>
   </div>
 
-  <div class="card">
+  <div class="card fullonly">
     <h2>基準点</h2>
     <table id="points"><thead><tr><th>点</th><th>X</th><th>Y</th><th>標高</th><th>目印</th></tr></thead><tbody></tbody></table>
     <p class="muted" id="qnote" hidden>Q で始まる点は、このスマホで点群から拾って覚えている点です。
@@ -69,6 +90,11 @@ document.body.insertAdjacentHTML('afterbegin', `
     <div id="live"></div>
   </div>
   <div class="panel">
+    <!-- config.json の ui が simple のとき：2 点を当てるボタンだけ -->
+    <div class="row simplerow">
+      <button id="s1b" class="big blue" disabled>① P1 をここ</button>
+      <button id="s2b" class="big orange" disabled>② P2 をここ</button>
+    </div>
     <!-- 位置合わせモード -->
     <div class="row adjonly">
       <button id="pp">◀</button><button id="pivBtn" class="blue">固定 P1</button><button id="pn">▶</button>
@@ -171,7 +197,10 @@ async function fetchBuf(url) {
   const b = await r.arrayBuffer();
   return KEY ? decrypt(KEY, b) : b;
 }
-const PT = cfg.points;                        // 基準点（2 点以上。全部使う。点群から拾った点は後ろへ足す）
+const PT = cfg.points || [];                  // 基準点（2 点以上。全部使う。点群から拾った点は後ろへ足す）
+// ui: "simple"：基準点を前もって持たず、AR の前に点群の上で 2 点を選ぶ。AR の中のボタンは「① P1 をここ」「② P2 をここ」だけ
+const SIMPLE = cfg.ui === 'simple';
+if (SIMPLE) document.body.classList.add('simple');
 
 // 点群から拾った点（Q1, Q2 …）はこのスマホに覚えておく（フォルダごと。localStorage）。
 // 暗号化したフォルダでは、覚えるときも同じ鍵で暗号化する（スマホの中でも座標を平文で置かない）
@@ -191,7 +220,7 @@ async function saveQ() {
   } catch (e) { /* 覚えられなくても AR は続ける */ }
 }
 let nPicked = 0;
-try {
+if (!SIMPLE) try {
   let t = localStorage.getItem(QKEY);
   if (t) {
     if (t.startsWith('enc:')) {
@@ -232,6 +261,15 @@ if (cfg.pointcloud) document.body.classList.add('hascloud');
 const O = { x: 0, y: 0, z: 0, ...(cfg.origin || {}) };
 const siteToGl = p => new THREE.Vector3(p.x - O.x, p.z - O.z, -(p.y - O.y));
 const glToSite = v => ({ x: v.x + O.x, y: -v.z + O.y, z: v.y + O.z });
+// simple：選んだ 2 点はこのスマホに覚える（フォルダごと）。暗号化したフォルダでは覚えない
+const SKEY = 'arsimple:' + location.pathname;
+let xrOK = false;                               // AR を始められる端末か（下で調べる）
+if (SIMPLE) {
+  let saved = null;
+  if (!KEY) try { saved = JSON.parse(localStorage.getItem(SKEY)); } catch (e) {}
+  PT.length = 0;
+  for (const k of [0, 1]) PT.push(saved?.[k] ?? { name: `P${k + 1}`, x: O.x, y: O.y, z: O.z, unset: true });
+}
 const P = PT.map(siteToGl);                   // モデル側の点
 
 // ---------- three.js ----------
@@ -264,6 +302,8 @@ reticle.matrixAutoUpdate = false;
 reticle.visible = false;
 scene.add(reticle);
 
+let picker = null;                              // simple：AR の前に点群の上で 2 点を選ぶ画面（下で作る）
+
 // モデル（現場座標のまま）
 const group = new THREE.Group();
 group.matrixAutoUpdate = false;
@@ -272,7 +312,7 @@ scene.add(group);
 let modelRoot = null;
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const loadGlb = async url => (await loader.parseAsync(await fetchBuf(url), '')).scene;
-loadGlb(cfg.model).then(sc => { modelRoot = sc; group.add(modelRoot); })
+loadGlb(cfg.model).then(sc => { modelRoot = sc; group.add(modelRoot); picker?.addModel(sc); })
   .catch(() => { $('support').textContent = 'モデルを読めませんでした（' + cfg.model + '）'; });
 
 // 点群（任意。config.json の pointcloud。tools/las_to_points.py で作る）。
@@ -301,6 +341,7 @@ if (cfg.pointcloud) {
     });
     cloud = sc; group.add(cloud);
     $('support').textContent = '';
+    picker?.addCloud(sc);
   }).catch(() => { $('support').textContent = '点群を読めませんでした（' + cfg.pointcloud + '）'; });
 }
 // group の中の点 c にいちばん近い点群の点までの距離（m・group の中の長さ）。1 m より遠ければ null
@@ -343,7 +384,7 @@ const FLAG_H = 1.5;
 const FLAG_COL = { pivot: 0x1a6fd6, target: 0xf08c00, other: 0xf1f3f5 };
 const ptMarks = new THREE.Group();
 group.add(ptMarks);
-const flagMats = [];
+const flagMats = [], flagObjs = [];
 const poleG = new THREE.CylinderGeometry(0.02, 0.02, FLAG_H, 12).translate(0, FLAG_H / 2, 0);
 const ballG = new THREE.SphereGeometry(0.08, 20, 14).translate(0, FLAG_H, 0);
 const ringG = new THREE.RingGeometry(0.10, 0.15, 40).rotateX(-Math.PI / 2).translate(0, 0.004, 0);
@@ -367,6 +408,8 @@ function addFlag(pt, at) {                      // flagMats の並びは PT と�
   sp.scale.set(0.6, 0.225, 1);
   sp.position.copy(at); sp.position.y += FLAG_H + 0.3; sp.renderOrder = 7;
   ptMarks.add(sp);
+  f.visible = sp.visible = !pt.unset;
+  flagObjs.push({ f, sp });
 }
 PT.forEach((pt, i) => addFlag(pt, P[i]));
 function paintFlags() {
@@ -374,6 +417,134 @@ function paintFlags() {
     const c = i === pivot ? FLAG_COL.pivot : i === target ? FLAG_COL.target : FLAG_COL.other;
     solid.color.setHex(c); solid.emissive.setHex(c); flat.color.setHex(c);
   });
+}
+
+// ---------- simple：AR の前に点群の上で 2 点を選ぶ ----------
+// 真上から見た点群（北が上）。1 本指で動かす・2 本指（ホイール）で拡大。タップした所のいちばん低い点（地面）を取る
+let slot = 0;
+function setSimplePoint(k, site) {
+  PT[k] = { name: `P${k + 1}`, x: site.x, y: site.y, z: site.z, note: '点群から選んだ点' };
+  P[k].copy(siteToGl(PT[k]));
+  const o = flagObjs[k];
+  o.f.position.copy(P[k]); o.sp.position.copy(P[k]); o.sp.position.y += FLAG_H + 0.3;
+  o.f.visible = o.sp.visible = true;
+  if (!KEY) try { localStorage.setItem(SKEY, JSON.stringify(PT.slice(0, 2).map(p => (p.unset ? null : p)))); } catch (e) {}
+  picker?.mark();
+  simpleInfo();
+  updateStart();
+}
+function simpleInfo() {
+  const t = PT.slice(0, 2).map(p => p.unset ? `${p.name} まだ`
+    : `${p.name}  X ${f3(p.x)}  Y ${f3(p.y)}  標高 ${f3(p.z)}`);
+  let d = '';
+  if (!PT[0].unset && !PT[1].unset) {
+    const m = Math.hypot(PT[1].x - PT[0].x, PT[1].y - PT[0].y);
+    d = `<br>P1–P2 ${m.toFixed(1)} m` + (m < 5 ? '　★近すぎる（離すほど向きが正確）' : '');
+  }
+  $('pickinfo').innerHTML = t.join('<br>') + d;
+}
+function setSlot(k) {
+  slot = k;
+  $('selP1').classList.toggle('sel', k === 0);
+  $('selP2').classList.toggle('sel', k === 1);
+}
+if (SIMPLE) {
+  $('selP1').onclick = () => setSlot(0);
+  $('selP2').onclick = () => setSlot(1);
+  const { MapControls } = await import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/MapControls.js/+esm');
+  const view = $('pickview');
+  const pr = new THREE.WebGLRenderer({ antialias: true });
+  pr.setPixelRatio(window.devicePixelRatio);
+  view.appendChild(pr.domElement);
+  const ps = new THREE.Scene();
+  ps.background = new THREE.Color(0x1d2128);
+  ps.add(new THREE.HemisphereLight(0xffffff, 0x777766, 2.5));
+  const pc = new THREE.OrthographicCamera(-1, 1, 1, -1, -2000, 2000);
+  pc.up.set(0, 0, -1);                            // 北（glTF の −z）を画面の上に
+  const ctl = new MapControls(pc, pr.domElement);
+  ctl.enableRotate = false; ctl.screenSpacePanning = true; ctl.zoomToCursor = true; ctl.enableDamping = false;
+  ctl.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+  let pcloud = null, box = null;
+  const marks = new THREE.Group();
+  ps.add(marks);
+  const render = () => pr.render(ps, pc);
+  ctl.addEventListener('change', render);
+  function resize() {
+    const wv = view.clientWidth || 320, hv = Math.round(Math.min(window.innerHeight * 0.65, wv * 1.25));
+    pr.setSize(wv, hv);
+    const a = wv / hv, r = box ? Math.max(box.max.x - box.min.x, (box.max.z - box.min.z) * a) / 2 * 1.05 : 50;
+    pc.left = -r; pc.right = r; pc.top = r / a; pc.bottom = -r / a;
+    pc.updateProjectionMatrix();
+    render();
+  }
+  function fit() {
+    const c = box.getCenter(new THREE.Vector3());
+    ctl.target.set(c.x, 0, c.z);
+    pc.position.set(c.x, 1000, c.z);
+    pc.zoom = 1;
+    pc.lookAt(ctl.target);
+    resize();
+    ctl.update();
+  }
+  window.addEventListener('resize', resize);
+  const rc = new THREE.Raycaster();
+  let down = null;
+  pr.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: performance.now(), n: e.isPrimary }; });
+  pr.domElement.addEventListener('pointerup', e => {
+    if (!down || !pcloud || performance.now() - down.t > 500 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
+    down = null;
+    const rect = pr.domElement.getBoundingClientRect();
+    rc.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / rect.width * 2 - 1, -(e.clientY - rect.top) / rect.height * 2 + 1), pc);
+    const wpp = (pc.right - pc.left) / pc.zoom / rect.width;       // 1 画素が何 m か
+    rc.params.Points.threshold = wpp * 10;
+    const hits = rc.intersectObject(pcloud, true);
+    if (!hits.length) { $('pickinfo').textContent = '点群の上をタップしてください'; return; }
+    const dmin = Math.min(...hits.map(h => h.distanceToRay));
+    const cand = hits.filter(h => h.distanceToRay <= dmin + wpp * 2);
+    const pos = h => new THREE.Vector3().fromBufferAttribute(h.object.geometry.getAttribute('position'), h.index).applyMatrix4(h.object.matrixWorld);
+    const v = cand.map(pos).reduce((a, b) => (b.y < a.y ? b : a));  // いちばん低い点＝地面（木や電柱の上を取らない）
+    setSimplePoint(slot, glToSite(v));
+    if (slot === 0 && PT[1].unset) setSlot(1);
+  });
+  picker = {
+    addCloud(sc) {
+      pcloud = sc.clone();
+      pcloud.traverse(o => { if (o.isPoints) o.material = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true }); });
+      ps.add(pcloud);
+      box = new THREE.Box3().setFromObject(pcloud);
+      fit();
+      simpleInfo();
+      this.mark();
+    },
+    addModel(sc) {                                // モデルは点群の上に半透明で重ねる（埋まっている物も見えるように）
+      const m = sc.clone();
+      m.traverse(o => {
+        if (!o.isMesh) return;
+        o.material = o.material.clone();
+        o.material.transparent = true; o.material.opacity = 0.55; o.material.depthTest = false;
+        o.renderOrder = 2;
+      });
+      ps.add(m);
+      if (box) render();
+    },
+    mark() {                                      // 選んだ 2 点（白の縁取り＋青／橙）
+      marks.clear();
+      PT.slice(0, 2).forEach((p, k) => {
+        if (p.unset) return;
+        const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(P[k].toArray(), 3));
+        for (const [size, col] of [[22, 0xffffff], [14, [FLAG_COL.pivot, FLAG_COL.target][k]]]) {
+          const pt = new THREE.Points(g, new THREE.PointsMaterial({ size, color: col, sizeAttenuation: false, depthTest: false }));
+          pt.renderOrder = 5 + (size < 20 ? 1 : 0);
+          marks.add(pt);
+        }
+      });
+      render();
+    },
+  };
+  // MapControls を読んでいる間に読み終わっていたもの
+  if (cloud) picker.addCloud(cloud);
+  if (modelRoot) picker.addModel(modelRoot);
+  if (!cfg.pointcloud) $('pickinfo').textContent = 'この現場には点群がありません（config.json の pointcloud）';
 }
 
 // ---------- 置き方の値 ----------
@@ -519,6 +690,19 @@ function unlock() {
 
 function showUI() {
   const ov = $('overlay');
+  ov.classList.toggle('simple', SIMPLE);
+  if (SIMPLE) {
+    $('s1b').disabled = !lastHit;
+    $('s2b').disabled = !lastHit || !placed;
+    let st;
+    if (!lastHit) st = '<b>地面を探しています…</b><br>スマホをゆっくり左右に動かしてください';
+    else if (!placed) st = '<b>十字を現地の P1 の場所に当てて「① P1 をここ」</b>';
+    else if (aligning) st = '<b>十字を現地の P2 の場所に当てて「② P2 をここ」</b>';
+    else st = '<span class="mode lock">合わせた</span><b>ずれたら ① からやり直してください</b>';
+    $('step').innerHTML = st;
+    $('info').textContent = '';
+    return;
+  }
   ov.classList.toggle('aligning', aligning);
   ov.classList.toggle('scaling', allowScale);
   const a = PT[pivot].name, b = PT[target].name;
@@ -567,6 +751,9 @@ $('sp').onclick = () => scaleBy(1.01);   $('sm').onclick = () => scaleBy(1 / 1.0
 $('sp2').onclick = () => scaleBy(1.001); $('sm2').onclick = () => scaleBy(1 / 1.001);
 $('s1').onclick = () => { s = 1; apply(); };
 $('lock').onclick = lock;
+// simple：① 固定点 P1 を十字へ（やり直しもここから）／② P2 へ向けて、そのまま固定（アンカー）
+$('s1b').onclick = () => { if (!aligning) unlock(); placeHere(); };
+$('s2b').onclick = () => { if (!aligning) unlock(); aimOther(); lock(); };
 $('adjust').onclick = unlock;
 $('toggle').onclick = () => {
   translucent = !translucent;
@@ -681,6 +868,13 @@ async function startAR() {
 }
 $('start').onclick = () => startAR().catch(e => { $('support').textContent = 'AR を始められませんでした：' + e.message; });
 
+// AR を始めるボタン：simple は 2 点を選んでから
+function updateStart() {
+  if (!xrOK) return;
+  const need = SIMPLE && PT.slice(0, 2).some(p => p.unset);
+  $('start').disabled = need;
+  $('start').textContent = need ? 'AR を始める（先に P1・P2 を選んでください）' : 'AR を始める';
+}
 // iPhone：Variant Launch の中で開き直すと WebXR が使える
 function launchReady(d) {
   if (!d || !d.launchRequired) return false;
@@ -690,7 +884,7 @@ function launchReady(d) {
   return true;
 }
 if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false)) {
-  $('start').disabled = false;
+  xrOK = true; updateStart();
 } else if (!launchReady(window.__vl)) {
   $('support').innerHTML = IS_IOS && VL_KEY
     ? '準備中です。少し待ってから再読み込みしてください。'
