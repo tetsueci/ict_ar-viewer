@@ -18,7 +18,6 @@ import json
 import math
 import multiprocessing
 import os
-import shutil
 import sys
 import time
 
@@ -27,7 +26,7 @@ import ifcopenshell.geom
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
-from glb import compress_glb, write_glb, zup_to_yup  # noqa: E402
+from glb import compress_glb, copy_page, write_glb, zup_to_yup  # noqa: E402
 from ifc_to_glb import DEFAULT_SKIP, FALLBACK, rgba_of  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -182,9 +181,7 @@ def main():
         groups[col] = (zup_to_yup(np.concatenate(vs)), np.concatenate(ts))
 
     os.makedirs(out, exist_ok=True)
-    page = os.path.join(out, "index.html")
-    if not os.path.exists(page):              # 新しいフォルダには入口のひな形を写す（中身は ../common/）
-        shutil.copyfile(os.path.join(ROOT, "common", "page.html"), page)
+    copy_page(out)                            # 新しいフォルダには入口のひな形を写す（中身は common/）
     n = write_glb(os.path.join(out, "model.glb"), groups, name="model", smooth=True)
     raw = n
     if not a.no_compress:

@@ -18,7 +18,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
-from glb import write_glb, zup_to_yup  # noqa: E402
+from glb import copy_page, write_glb, zup_to_yup  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -298,10 +298,7 @@ def main():
             groups[col] = (zup_to_yup(v), t)
 
     os.makedirs(a.out, exist_ok=True)
-    page = os.path.join(a.out, "index.html")
-    if not os.path.exists(page):              # 新しいフォルダには入口のひな形を写す（中身は ../common/）
-        import shutil
-        shutil.copyfile(os.path.join(ROOT, "common", "page.html"), page)
+    copy_page(a.out)                          # 新しいフォルダには入口のひな形を写す（中身は common/）
     n = write_glb(os.path.join(a.out, "model.glb"), groups, name="model")
     cfg = {
         "title": a.title,

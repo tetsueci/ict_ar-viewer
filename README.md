@@ -4,6 +4,13 @@
 > （置くと履歴に残り、消しても取り出せる）。中身は `_plain/` で作って `tools/encrypt_site.py` で暗号化する
 > （「暗号化して置く」の節）。2026-10-02 に ict_ar-model-viewer から、履歴を持たずに分けた。
 > 平文の現場はまだ ict_ar-model-viewer にある。
+>
+> **共通部品（`common/`・`tools/`）の正はこのリポジトリ**（2026-10-03 決定）。
+> ict_ar-model-viewer のフォルダも、ここの `common/` を `https://tetsueci.github.io/ict_ar-viewer/common/` から読む。
+> **`common/` を直すと両方のリポジトリの全フォルダに効く**。`enc` の無い（平文の）フォルダでも動くように保つ。
+> 道具も ict_ar-model-viewer には置かない。あちらのフォルダを作るときは、あちらのリポジトリの直下で
+> `python ../ict_ar-viewer/tools/<道具>.py … --out ../ar-model-viewer/<フォルダ>` と打つ
+> （`--out` はどの道具でもこの形で通る。新しいフォルダの `index.html` は自動で上の URL を読む形になる）。
 
 
 スマートフォンのブラウザで 3D モデルを表示し、「AR で置く」ボタンで現実の床に置けるページです。

@@ -192,3 +192,26 @@ def compress_glb(path):
         return None
     os.remove(tmp)
     return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+# 共通部品（common/）の正はこのリポジトリ（ict_ar-viewer）。ほかのリポジトリ（ict_ar-model-viewer）の
+# フォルダは、同じ tetsueci.github.io にあるここの common/ を読む（どこで直しても全部の現場に効く）
+COMMON_URL = "https://tetsueci.github.io/ict_ar-viewer/common/"
+
+
+def copy_page(out):
+    """フォルダの入口 index.html を common/page.html から作る（もうあれば何もしない）。
+
+    out がこのリポジトリの外（ict_ar-model-viewer など）なら、../common/ を COMMON_URL に書き換える。
+    """
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    page = os.path.join(out, "index.html")
+    if os.path.exists(page):
+        return
+    with open(os.path.join(root, "common", "page.html"), encoding="utf-8", newline="") as fi:
+        s = fi.read()
+    if os.path.commonpath([os.path.abspath(out), root]) != root:
+        s = s.replace('"../common/', '"' + COMMON_URL)
+    with open(page, "w", encoding="utf-8", newline="") as fo:
+        fo.write(s)
