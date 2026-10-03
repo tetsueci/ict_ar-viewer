@@ -71,6 +71,11 @@ body:not(.simple) .simpleonly { display: none !important; }
 body.simple .simpleonly { display: block; }
 body.simple .simpleonly[hidden] { display: block; }
 body.simple .fullonly { display: none !important; }
-.simplerow { display: none !important; }
+.simplerow, .simplelock { display: none !important; }
 #overlay.simple .row { display: none !important; }
-#overlay.simple .simplerow { display: flex !important; }
+#overlay.simple.aligning .simplerow { display: flex !important; }
+#overlay.simple:not(.aligning) .simplelock { display: flex !important; }
+#overlay .lbl { align-self: center; font-size: 12.5px; color: #fff; text-shadow: 0 1px 3px #000; margin-right: 2px; }
+#pickview { width: 100%; border-radius: 8px; overflow: hidden; touch-action: none; line-height: 0; }
+#pickview canvas { display: block; touch-action: none; }
+#pickinfo { margin-top: 8px; font-variant-numeric: tabular-nums; line-height: 1.6; }
