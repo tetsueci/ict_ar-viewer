@@ -79,3 +79,9 @@ body.simple .fullonly { display: none !important; }
 #pickview { width: 100%; border-radius: 8px; overflow: hidden; touch-action: none; line-height: 0; }
 #pickview canvas { display: block; touch-action: none; }
 #pickinfo { margin-top: 8px; font-variant-numeric: tabular-nums; line-height: 1.6; }
+/* 画面上部のガイドを畳む */
+#overlay #fold { float: right; margin: -2px -4px 4px 8px; padding: 4px 10px; font-size: 12px; border-radius: 999px;
+  background: rgba(255,255,255,.18); color: #fff; }
+.top.folded { left: auto; padding: 4px; background: transparent; }
+.top.folded > :not(#fold) { display: none; }
+#overlay .top.folded #fold { float: none; margin: 0; background: rgba(15,18,22,.78); }

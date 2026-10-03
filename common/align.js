@@ -82,6 +82,7 @@ document.body.insertAdjacentHTML('afterbegin', `
 <div id="overlay">
   <div id="gest"></div>
   <div class="top">
+    <button id="fold" type="button" aria-label="ガイドを畳む">▲ 畳む</button>
     <div id="step"></div>
     <div id="info"></div>
     <div id="check"></div>
@@ -806,6 +807,15 @@ $('sel1').onclick = () => setSlot(0);
 $('sel2').onclick = () => setSlot(1);
 $('slock').onclick = lock;
 $('sadj').onclick = unlock;
+// 画面上部のガイドを畳む／広げる（畳んだかはこのスマホに覚える）
+function setFold(on) {
+  document.querySelector('#overlay .top').classList.toggle('folded', on);
+  $('fold').textContent = on ? '▼ ガイド' : '▲ 畳む';
+  $('fold').setAttribute('aria-label', on ? 'ガイドを広げる' : 'ガイドを畳む');
+  try { localStorage.setItem('arfold', on ? '1' : ''); } catch (e) {}
+}
+$('fold').onclick = () => setFold(!document.querySelector('#overlay .top').classList.contains('folded'));
+try { if (localStorage.getItem('arfold')) setFold(true); } catch (e) {}
 $('sexit1').onclick = $('sexit2').onclick = () => session?.end();
 $('adjust').onclick = unlock;
 $('toggle').onclick = () => {
