@@ -27,22 +27,12 @@ document.body.insertAdjacentHTML('afterbegin', `
   <div class="card simpleonly" hidden>
     <h2>使い方</h2>
     <ol>
-      <li>下の点群の上で、現地で見つけやすい所（白線の角・マンホールの中心など）を <b>P1</b>・<b>P2</b> の 2 か所タップして選ぶ。
-        2 点は離すほど向きが正確になる</li>
-      <li>「AR を始める」→ 地面を映してスマホをゆっくり動かす（十字が地面に張り付くまで）</li>
-      <li>十字を現地の <b>P1</b> の場所に当てて「① P1 をここ」</li>
-      <li>十字を現地の <b>P2</b> の場所に当てて「② P2 をここ」。これで合う。ずれたら ① からやり直す</li>
+      <li>「AR を始める」→ 地面を映してスマホをゆっくり動かす。十字が地面に張り付くと、点群とモデルが十字の所に出る</li>
+      <li><b>1 本指でなぞる</b>と点群が地面の上を動き、<b>2 本指でひねる</b>と回る。現地で分かる所（白線の角・マンホールなど）を点群の中で探す</li>
+      <li>点群の中のその所を<b>タップ</b>すると P1（青い旗）になる。十字を現地の同じ場所に当てて「① P1 をここ」</li>
+      <li>P1 から離れた所を点群の中でタップすると P2（橙の旗）になる。十字を現地の同じ場所に当てて「② P2 をここ」。これで合う</li>
+      <li>ずれたら ① からやり直す（P2 はタップで選び直せる）。終わるときはスマホの「戻る」</li>
     </ol>
-  </div>
-
-  <div class="card simpleonly" id="pickcard" hidden>
-    <h2>基準点を 2 つ選ぶ</h2>
-    <div class="pickbtns">
-      <button id="selP1" class="pk blue sel" type="button">P1 を選ぶ</button>
-      <button id="selP2" class="pk orange" type="button">P2 を選ぶ</button>
-    </div>
-    <div id="pickview"></div>
-    <div id="pickinfo" class="muted">点群を読んでいます…（1 本指で動かす・2 本指で拡大）</div>
   </div>
 
   <div class="card fullonly">
@@ -261,14 +251,10 @@ if (cfg.pointcloud) document.body.classList.add('hascloud');
 const O = { x: 0, y: 0, z: 0, ...(cfg.origin || {}) };
 const siteToGl = p => new THREE.Vector3(p.x - O.x, p.z - O.z, -(p.y - O.y));
 const glToSite = v => ({ x: v.x + O.x, y: -v.z + O.y, z: v.y + O.z });
-// simple：選んだ 2 点はこのスマホに覚える（フォルダごと）。暗号化したフォルダでは覚えない
-const SKEY = 'arsimple:' + location.pathname;
-let xrOK = false;                               // AR を始められる端末か（下で調べる）
+// simple：2 点は AR の中で点群をタップして選ぶ。選ぶまでは仮の点（P1 は点群の真ん中の地面。旗は出さない）
 if (SIMPLE) {
-  let saved = null;
-  if (!KEY) try { saved = JSON.parse(localStorage.getItem(SKEY)); } catch (e) {}
   PT.length = 0;
-  for (const k of [0, 1]) PT.push(saved?.[k] ?? { name: `P${k + 1}`, x: O.x, y: O.y, z: O.z, unset: true });
+  for (const k of [0, 1]) PT.push({ name: `P${k + 1}`, x: O.x, y: O.y, z: O.z, unset: true });
 }
 const P = PT.map(siteToGl);                   // モデル側の点
 
@@ -302,8 +288,6 @@ reticle.matrixAutoUpdate = false;
 reticle.visible = false;
 scene.add(reticle);
 
-let picker = null;                              // simple：AR の前に点群の上で 2 点を選ぶ画面（下で作る）
-
 // モデル（現場座標のまま）
 const group = new THREE.Group();
 group.matrixAutoUpdate = false;
@@ -312,7 +296,7 @@ scene.add(group);
 let modelRoot = null;
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const loadGlb = async url => (await loader.parseAsync(await fetchBuf(url), '')).scene;
-loadGlb(cfg.model).then(sc => { modelRoot = sc; group.add(modelRoot); picker?.addModel(sc); })
+loadGlb(cfg.model).then(sc => { modelRoot = sc; group.add(modelRoot); })
   .catch(() => { $('support').textContent = 'モデルを読めませんでした（' + cfg.model + '）'; });
 
 // 点群（任意。config.json の pointcloud。tools/las_to_points.py で作る）。
@@ -341,8 +325,23 @@ if (cfg.pointcloud) {
     });
     cloud = sc; group.add(cloud);
     $('support').textContent = '';
-    picker?.addCloud(sc);
+    if (SIMPLE && PT[0].unset) P[0].copy(cloudCenterGround());   // 最初に十字の所へ出す点
   }).catch(() => { $('support').textContent = '点群を読めませんでした（' + cfg.pointcloud + '）'; });
+}
+// 点群の外接箱の真ん中にいちばん近い地面の点（真ん中の 3 m 以内でいちばん低い点。無ければ箱の底）
+function cloudCenterGround() {
+  const box = new THREE.Box3().setFromObject(cloud);
+  const c = box.getCenter(new THREE.Vector3());
+  let best = null;
+  for (let r = 3; r <= 48 && !best; r *= 2) {
+    const i0 = Math.floor(c.x / CELL), k0 = Math.floor(c.z / CELL), n = Math.ceil(r / CELL);
+    for (let di = -n; di <= n; di++) for (let dk = -n; dk <= n; dk++) {
+      const a = cloudGrid.get((i0 + di + 32768) * 65536 + (k0 + dk + 32768));
+      if (!a) continue;
+      for (let j = 0; j < a.length; j += 3) if (!best || a[j + 1] < best.y) best = new THREE.Vector3(a[j], a[j + 1], a[j + 2]);
+    }
+  }
+  return best || new THREE.Vector3(c.x, box.min.y, c.z);
 }
 // group の中の点 c にいちばん近い点群の点までの距離（m・group の中の長さ）。1 m より遠ければ null
 function cloudDist(c) {
@@ -419,132 +418,32 @@ function paintFlags() {
   });
 }
 
-// ---------- simple：AR の前に点群の上で 2 点を選ぶ ----------
-// 真上から見た点群（北が上）。1 本指で動かす・2 本指（ホイール）で拡大。タップした所のいちばん低い点（地面）を取る
-let slot = 0;
-function setSimplePoint(k, site) {
+// ---------- simple：AR の中で点群をタップして 2 点を選ぶ ----------
+// v は group の中の座標。見た目を変えずに点だけ替える（固定点を替えるときは w を付け直す）
+function setSimplePoint(k, v) {
+  if (placed && k === pivot) w = v.clone().applyMatrix4(group.matrix);
+  const site = glToSite(v);
   PT[k] = { name: `P${k + 1}`, x: site.x, y: site.y, z: site.z, note: '点群から選んだ点' };
-  P[k].copy(siteToGl(PT[k]));
+  P[k].copy(v);
   const o = flagObjs[k];
-  o.f.position.copy(P[k]); o.sp.position.copy(P[k]); o.sp.position.y += FLAG_H + 0.3;
+  o.f.position.copy(v); o.sp.position.copy(v); o.sp.position.y += FLAG_H + 0.3;
   o.f.visible = o.sp.visible = true;
-  if (!KEY) try { localStorage.setItem(SKEY, JSON.stringify(PT.slice(0, 2).map(p => (p.unset ? null : p)))); } catch (e) {}
-  picker?.mark();
-  simpleInfo();
-  updateStart();
+  $('check').className = '';
+  $('check').textContent = `${PT[k].name} を選んだ（X ${site.x.toFixed(2)}　Y ${site.y.toFixed(2)}　標高 ${site.z.toFixed(2)}）`;
+  apply();
 }
-function simpleInfo() {
-  const t = PT.slice(0, 2).map(p => p.unset ? `${p.name} まだ`
-    : `${p.name}  X ${f3(p.x)}  Y ${f3(p.y)}  標高 ${f3(p.z)}`);
-  let d = '';
-  if (!PT[0].unset && !PT[1].unset) {
-    const m = Math.hypot(PT[1].x - PT[0].x, PT[1].y - PT[0].y);
-    d = `<br>P1–P2 ${m.toFixed(1)} m` + (m < 5 ? '　★近すぎる（離すほど向きが正確）' : '');
-  }
-  $('pickinfo').innerHTML = t.join('<br>') + d;
+// 十字の所へ最初に出す（点群を読み終え、十字が地面に張り付いたら 1 回だけ）
+function autoPlace() {
+  w = lastHit.clone(); theta = 0; s = 1; placed = true;
+  apply();
 }
-function setSlot(k) {
-  slot = k;
-  $('selP1').classList.toggle('sel', k === 0);
-  $('selP2').classList.toggle('sel', k === 1);
-}
-if (SIMPLE) {
-  $('selP1').onclick = () => setSlot(0);
-  $('selP2').onclick = () => setSlot(1);
-  const { MapControls } = await import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/MapControls.js/+esm');
-  const view = $('pickview');
-  const pr = new THREE.WebGLRenderer({ antialias: true });
-  pr.setPixelRatio(window.devicePixelRatio);
-  view.appendChild(pr.domElement);
-  const ps = new THREE.Scene();
-  ps.background = new THREE.Color(0x1d2128);
-  ps.add(new THREE.HemisphereLight(0xffffff, 0x777766, 2.5));
-  const pc = new THREE.OrthographicCamera(-1, 1, 1, -1, -2000, 2000);
-  pc.up.set(0, 0, -1);                            // 北（glTF の −z）を画面の上に
-  const ctl = new MapControls(pc, pr.domElement);
-  ctl.enableRotate = false; ctl.screenSpacePanning = true; ctl.zoomToCursor = true; ctl.enableDamping = false;
-  ctl.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
-  let pcloud = null, box = null;
-  const marks = new THREE.Group();
-  ps.add(marks);
-  const render = () => pr.render(ps, pc);
-  ctl.addEventListener('change', render);
-  function resize() {
-    const wv = view.clientWidth || 320, hv = Math.round(Math.min(window.innerHeight * 0.65, wv * 1.25));
-    pr.setSize(wv, hv);
-    const a = wv / hv, r = box ? Math.max(box.max.x - box.min.x, (box.max.z - box.min.z) * a) / 2 * 1.05 : 50;
-    pc.left = -r; pc.right = r; pc.top = r / a; pc.bottom = -r / a;
-    pc.updateProjectionMatrix();
-    render();
-  }
-  function fit() {
-    const c = box.getCenter(new THREE.Vector3());
-    ctl.target.set(c.x, 0, c.z);
-    pc.position.set(c.x, 1000, c.z);
-    pc.zoom = 1;
-    pc.lookAt(ctl.target);
-    resize();
-    ctl.update();
-  }
-  window.addEventListener('resize', resize);
-  const rc = new THREE.Raycaster();
-  let down = null;
-  pr.domElement.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: performance.now(), n: e.isPrimary }; });
-  pr.domElement.addEventListener('pointerup', e => {
-    if (!down || !pcloud || performance.now() - down.t > 500 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
-    down = null;
-    const rect = pr.domElement.getBoundingClientRect();
-    rc.setFromCamera(new THREE.Vector2((e.clientX - rect.left) / rect.width * 2 - 1, -(e.clientY - rect.top) / rect.height * 2 + 1), pc);
-    const wpp = (pc.right - pc.left) / pc.zoom / rect.width;       // 1 画素が何 m か
-    rc.params.Points.threshold = wpp * 10;
-    const hits = rc.intersectObject(pcloud, true);
-    if (!hits.length) { $('pickinfo').textContent = '点群の上をタップしてください'; return; }
-    const dmin = Math.min(...hits.map(h => h.distanceToRay));
-    const cand = hits.filter(h => h.distanceToRay <= dmin + wpp * 2);
-    const pos = h => new THREE.Vector3().fromBufferAttribute(h.object.geometry.getAttribute('position'), h.index).applyMatrix4(h.object.matrixWorld);
-    const v = cand.map(pos).reduce((a, b) => (b.y < a.y ? b : a));  // いちばん低い点＝地面（木や電柱の上を取らない）
-    setSimplePoint(slot, glToSite(v));
-    if (slot === 0 && PT[1].unset) setSlot(1);
-  });
-  picker = {
-    addCloud(sc) {
-      pcloud = sc.clone();
-      pcloud.traverse(o => { if (o.isPoints) o.material = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true }); });
-      ps.add(pcloud);
-      box = new THREE.Box3().setFromObject(pcloud);
-      fit();
-      simpleInfo();
-      this.mark();
-    },
-    addModel(sc) {                                // モデルは点群の上に半透明で重ねる（埋まっている物も見えるように）
-      const m = sc.clone();
-      m.traverse(o => {
-        if (!o.isMesh) return;
-        o.material = o.material.clone();
-        o.material.transparent = true; o.material.opacity = 0.55; o.material.depthTest = false;
-        o.renderOrder = 2;
-      });
-      ps.add(m);
-      if (box) render();
-    },
-    mark() {                                      // 選んだ 2 点（白の縁取り＋青／橙）
-      marks.clear();
-      PT.slice(0, 2).forEach((p, k) => {
-        if (p.unset) return;
-        const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(P[k].toArray(), 3));
-        for (const [size, col] of [[22, 0xffffff], [14, [FLAG_COL.pivot, FLAG_COL.target][k]]]) {
-          const pt = new THREE.Points(g, new THREE.PointsMaterial({ size, color: col, sizeAttenuation: false, depthTest: false }));
-          pt.renderOrder = 5 + (size < 20 ? 1 : 0);
-          marks.add(pt);
-        }
-      });
-      render();
-    },
-  };
-  // MapControls を読んでいる間に読み終わっていたもの
-  if (cloud) picker.addCloud(cloud);
-  if (modelRoot) picker.addModel(modelRoot);
-  if (!cfg.pointcloud) $('pickinfo').textContent = 'この現場には点群がありません（config.json の pointcloud）';
+// 1 本指でなぞる＝点群を地面の上で動かす（指の下の地面がついてくる）
+const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+function groundAt(x, y) {
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  ray.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1), cam);
+  ground.constant = -w.y;
+  return ray.ray.intersectPlane(ground, new THREE.Vector3());
 }
 
 // ---------- 置き方の値 ----------
@@ -692,13 +591,18 @@ function showUI() {
   const ov = $('overlay');
   ov.classList.toggle('simple', SIMPLE);
   if (SIMPLE) {
-    $('s1b').disabled = !lastHit;
-    $('s2b').disabled = !lastHit || !placed;
+    ov.classList.toggle('aligning', aligning);
+    const done1 = obs.has(0);
+    $('s1b').disabled = !lastHit || PT[0].unset;
+    $('s2b').disabled = !lastHit || !done1 || PT[1].unset;
     let st;
     if (!lastHit) st = '<b>地面を探しています…</b><br>スマホをゆっくり左右に動かしてください';
-    else if (!placed) st = '<b>十字を現地の P1 の場所に当てて「① P1 をここ」</b>';
-    else if (aligning) st = '<b>十字を現地の P2 の場所に当てて「② P2 をここ」</b>';
-    else st = '<span class="mode lock">合わせた</span><b>ずれたら ① からやり直してください</b>';
+    else if (!placed) st = '<b>点群を読んでいます…</b>';
+    else if (!aligning) st = '<span class="mode lock">合わせた</span><b>ずれたら ① からやり直してください</b>';
+    else if (PT[0].unset) st = '<b>点群の中で、現地で分かる所をタップして P1 を選ぶ</b><br>1 本指でなぞる＝点群を動かす・2 本指でひねる＝回す';
+    else if (!done1) st = '<b>十字を現地の P1 の場所に当てて「① P1 をここ」</b><br>タップすると P1 を選び直せる';
+    else if (PT[1].unset) st = '<b>P1 から離れた所を点群の中でタップして P2 を選ぶ</b><br>2 本指でひねると P1 を中心に回る';
+    else st = '<b>十字を現地の P2 の場所に当てて「② P2 をここ」</b><br>タップすると P2 を選び直せる';
     $('step').innerHTML = st;
     $('info').textContent = '';
     return;
@@ -779,16 +683,22 @@ function gstate() {
 }
 const gest = $('gest');
 let tap0 = null;                                // 点を拾うときのタップ（押した位置と時刻）
+let gprev = null;                               // simple：1 本指で動かすときの前の指の位置
 gest.addEventListener('pointerdown', e => {
   touches.set(e.pointerId, { x: e.clientX, y: e.clientY }); g0 = gstate();
+  gprev = { x: e.clientX, y: e.clientY };
   tap0 = touches.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
 });
 gest.addEventListener('pointermove', e => {
   if (!touches.has(e.pointerId) || !placed || !aligning || picking) return;
   touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const g = gstate();
-  if (g.n !== g0.n) { g0 = g; return; }
-  if (g.n === 1) theta = g0.theta - (g.x - g0.x) * 0.15 * DEG;        // 右へなぞる＝右回り
+  if (g.n !== g0.n) { g0 = g; const t = touches.get(e.pointerId); gprev = { x: t.x, y: t.y }; return; }
+  if (SIMPLE && g.n === 1) {                     // 1 本指＝点群を地面の上で動かす
+    const t = touches.get(e.pointerId), a = groundAt(gprev.x, gprev.y), b = groundAt(t.x, t.y);
+    gprev = { x: t.x, y: t.y };
+    if (a && b) w.add(b.sub(a));
+  } else if (g.n === 1) theta = g0.theta - (g.x - g0.x) * 0.15 * DEG;        // 右へなぞる＝右回り
   else {
     theta = g0.theta - (g.ang - g0.ang);
     if (allowScale) s = g0.s * g.dist / g0.dist;
@@ -797,7 +707,7 @@ gest.addEventListener('pointermove', e => {
 });
 const up = e => {
   touches.delete(e.pointerId); g0 = touches.size ? gstate() : null;
-  if (picking && tap0 && e.type === 'pointerup' && performance.now() - tap0.t < 600
+  if ((picking || (SIMPLE && placed && aligning)) && tap0 && e.type === 'pointerup' && performance.now() - tap0.t < 600
       && Math.hypot(e.clientX - tap0.x, e.clientY - tap0.y) < 15) pickAt(e.clientX, e.clientY);
   tap0 = null;
 };
@@ -822,6 +732,7 @@ function pickAt(x, y) {
   const h = near.reduce((a, b) => (b.distanceToRay < a.distanceToRay ? b : a));
   const v = new THREE.Vector3().fromBufferAttribute(h.object.geometry.getAttribute('position'), h.index)
     .applyMatrix4(h.object.matrixWorld).applyMatrix4(tmpM.copy(group.matrixWorld).invert());
+  if (SIMPLE) { setSimplePoint(obs.has(0) ? 1 : 0, v); return; }
   const site = glToSite(v);
   const now = new Date();
   const pt = { name: `Q${++nPicked}`, ...site, picked: true,
@@ -868,13 +779,6 @@ async function startAR() {
 }
 $('start').onclick = () => startAR().catch(e => { $('support').textContent = 'AR を始められませんでした：' + e.message; });
 
-// AR を始めるボタン：simple は 2 点を選んでから
-function updateStart() {
-  if (!xrOK) return;
-  const need = SIMPLE && PT.slice(0, 2).some(p => p.unset);
-  $('start').disabled = need;
-  $('start').textContent = need ? 'AR を始める（先に P1・P2 を選んでください）' : 'AR を始める';
-}
 // iPhone：Variant Launch の中で開き直すと WebXR が使える
 function launchReady(d) {
   if (!d || !d.launchRequired) return false;
@@ -884,7 +788,7 @@ function launchReady(d) {
   return true;
 }
 if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false)) {
-  xrOK = true; updateStart();
+  $('start').disabled = false;
 } else if (!launchReady(window.__vl)) {
   $('support').innerHTML = IS_IOS && VL_KEY
     ? '準備中です。少し待ってから再読み込みしてください。'
@@ -908,6 +812,7 @@ renderer.setAnimationLoop((time, frame) => {
       lastHit = null;
     }
     if (had !== !!lastHit) showUI();
+    if (SIMPLE && !placed && lastHit && cloud) autoPlace();
 
     // 固定したらアンカーを作り、以後はアンカーの動きに合わせる（歩いたときのずれを減らす）
     if (anchorWant && frame.createAnchor) {
