@@ -56,8 +56,7 @@ document.body.insertAdjacentHTML('afterbegin', `
       <li>十字を<b>向ける点の印</b>に合わせて「→ 向ける」。固定した点を中心にモデルが回る</li>
       <li>基準点が 3 点以上あるときは、向ける点を替えて十字を当て「＋ 足す」。
         <b>記録した全部の点で</b>いちばん合う位置に置き直し、点ごとのずれが出る。「近い点」で十字に近い点を選べる</li>
-      <li>画面を指でなぞる・ひねると、固定した点を中心に回る（微調整は ⟲ ⟳ ボタン）。
-        拡大を「あり」にすると、2 本指で広げる・つまむ、または「→ 向ける」「＋ 足す」で大きさも合わせる</li>
+      <li>画面を指でなぞる・ひねると、固定した点を中心に回る</li>
       <li>合ったら「固定する」（緑の表示）。固定中は画面に触ってもモデルは動かない。直すときは「位置合わせ」</li>
       <li class="cloudonly"><b>点群</b>があるときは、モデルと一緒に点群も出る。十字の下に「点群まで ◯ cm」が出て、
         20 cm を超えると赤になる（基準点を合わせ直す目安）。
@@ -124,13 +123,14 @@ document.body.insertAdjacentHTML('afterbegin', `
     <div class="row adjonly">
       <button id="near" disabled>近い点</button>
       <button id="clr" disabled>記録を消す</button>
-      <button id="scaleTgl">拡大：なし</button>
+      <button id="scaleTgl" class="finetune">拡大：なし</button>
     </div>
     <div class="row adjonly cloudonly">
       <button id="pick" disabled>点群の点を拾う</button>
       <button id="cloud1">点群：小</button>
     </div>
-    <div class="row adjonly">
+    <!-- 微調整（回転・高さ・拡大）は config.json の "finetune": true のときだけ出す -->
+    <div class="row adjonly finetune">
       <button id="rl">⟲ 0.5°</button>
       <button id="rr">⟳ 0.5°</button>
       <button id="rl2">⟲ 0.1°</button>
@@ -138,7 +138,7 @@ document.body.insertAdjacentHTML('afterbegin', `
       <button id="up">▲ 5cm</button>
       <button id="dn">▼ 5cm</button>
     </div>
-    <div class="row scaleonly">
+    <div class="row scaleonly finetune">
       <button id="sm">縮小 1%</button>
       <button id="sp">拡大 1%</button>
       <button id="sm2">縮小 0.1%</button>
@@ -217,6 +217,7 @@ const PT = cfg.points || [];                  // 基準点（2 点以上。全�
 // ui: "simple"：基準点を前もって持たず、AR の前に点群の上で 2 点を選ぶ。AR の中のボタンは「① P1 をここ」「② P2 をここ」だけ
 const SIMPLE = cfg.ui === 'simple';
 if (SIMPLE) document.body.classList.add('simple');
+if (cfg.finetune) document.body.classList.add('finetune');
 // start: "pick"（または simple）：起動画面の地図で AR を始める場所を選ぶ。基準点を前もって持たない現場向け
 const STARTPICK = SIMPLE || cfg.start === 'pick';
 if (STARTPICK) $('startcard').hidden = false;
