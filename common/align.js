@@ -37,8 +37,12 @@ document.body.insertAdjacentHTML('afterbegin', `
     </ol>
   </div>
 
-  <div class="card simpleonly" id="startcard" hidden>
+  <div class="card" id="startcard" hidden>
     <h2>AR を始める場所</h2>
+    <p class="muted fullonly">基準点を前もって持たない現場です。地図で<b>始める場所</b>（いま立っている所のあたり）をタップすると、
+      そこが仮の点 <b>S</b> になります。AR で十字を足もとに当てて「◎ S をここへ」→「点群の点を拾う」で現地で分かる所（白線の角など）を拾うと
+      Q1 が固定点になるので、十字を現地の Q1 に当てて「◎ Q1 をここへ」。もう 1 点拾って（Q2）十字を当てて「→ Q2 へ向ける」。
+      拾った点はこのスマホに覚えるので、次からは S を使わずに Q で合わせられます。</p>
     <div id="pickview"></div>
     <div id="pickinfo" class="muted">点群を読んでいます…（1 本指で動かす・2 本指で拡大）</div>
   </div>
@@ -213,6 +217,9 @@ const PT = cfg.points || [];                  // 基準点（2 点以上。全�
 // ui: "simple"：基準点を前もって持たず、AR の前に点群の上で 2 点を選ぶ。AR の中のボタンは「① P1 をここ」「② P2 をここ」だけ
 const SIMPLE = cfg.ui === 'simple';
 if (SIMPLE) document.body.classList.add('simple');
+// start: "pick"（または simple）：起動画面の地図で AR を始める場所を選ぶ。基準点を前もって持たない現場向け
+const STARTPICK = SIMPLE || cfg.start === 'pick';
+if (STARTPICK) $('startcard').hidden = false;
 
 // 点群から拾った点（Q1, Q2 …）はこのスマホに覚えておく（フォルダごと。localStorage）。
 // 暗号化したフォルダでは、覚えるときも同じ鍵で暗号化する（スマホの中でも座標を平文で置かない）
@@ -278,11 +285,15 @@ const glToSite = v => ({ x: v.x + O.x, y: -v.z + O.y, z: v.y + O.z });
 const SKEY = 'arstart:' + location.pathname;
 let startAt = null;                             // 始める場所（現場座標）
 let xrOK = false;                               // AR を始められる端末か（下で調べる）
+if (STARTPICK && !KEY) try { startAt = JSON.parse(localStorage.getItem(SKEY)); } catch (e) {}
 if (SIMPLE) {
   PT.length = 0;
-  for (const k of [0, 1]) PT.push({ name: `P${k + 1}`, x: O.x, y: O.y, z: O.z, unset: true });
-  if (!KEY) try { startAt = JSON.parse(localStorage.getItem(SKEY)); } catch (e) {}
+  for (const k of [0, 1]) PT.push({ name: `P${k + 1}`, x: O.x, y: O.y, z: O.z, ...(k === 0 ? startAt : null), unset: true });
+} else if (STARTPICK) {
+  // 始める場所を仮の点 S として先頭に置く（拾った Q はこのあと。S は覚えない・表にも出さない）
+  PT.unshift({ name: 'S', ...(startAt || O), start: true, note: '始める場所（地図で選んだ大まかな場所）' });
 }
+const isStart = k => (SIMPLE ? PT[k]?.unset : PT[k]?.start) && k === 0;   // 始める場所で動かしてよい点
 const P = PT.map(siteToGl);                   // モデル側の点
 
 // ---------- three.js ----------
@@ -354,7 +365,7 @@ if (cfg.pointcloud) {
     });
     cloud = sc; group.add(cloud);
     $('support').textContent = '';
-    if (SIMPLE && PT[0].unset) P[0].copy(startAt ? siteToGl(startAt) : cloudCenterGround());   // 最初に十字の所へ出す点
+    if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
     picker?.addCloud(sc);
   }).catch(() => { $('support').textContent = '点群を読めませんでした（' + cfg.pointcloud + '）'; });
 }
@@ -441,6 +452,13 @@ function addFlag(pt, at) {                      // flagMats の並びは PT と�
   flagObjs.push({ f, sp });
 }
 PT.forEach((pt, i) => addFlag(pt, P[i]));
+// 始める場所の点（simple の仮の P1・start の S）を v（group の中の座標）へ動かす。旗もいっしょに
+function moveStart(v) {
+  P[0].copy(v);
+  if (!SIMPLE) Object.assign(PT[0], glToSite(v));
+  const o = flagObjs[0];
+  o.f.position.copy(v); o.sp.position.copy(v); o.sp.position.y += FLAG_H + 0.3;
+}
 function paintFlags() {
   flagMats.forEach(([solid, flat], i) => {
     const c = i === pivot ? FLAG_COL.pivot : i === target ? FLAG_COL.target : FLAG_COL.other;
@@ -486,7 +504,7 @@ function groundAt(x, y) {
 
 // ---------- simple：起動画面で AR を始める場所を選ぶ ----------
 // 真上から見た点群（北が上）。1 本指で動かす・2 本指（ホイール）で拡大。タップした所のいちばん低い点（地面）を取る
-if (SIMPLE) {
+if (STARTPICK) {
   const { MapControls } = await import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/MapControls.js/+esm');
   const view = $('pickview');
   const pr = new THREE.WebGLRenderer({ antialias: true });
@@ -545,7 +563,7 @@ if (SIMPLE) {
     const v = hits.filter(h => h.distanceToRay <= dmin + wpp * 2).map(pos).reduce((a, b) => (b.y < a.y ? b : a));  // いちばん低い点＝地面
     startAt = glToSite(v);
     if (!KEY) try { localStorage.setItem(SKEY, JSON.stringify(startAt)); } catch (e) {}
-    if (PT[0].unset) P[0].copy(v);
+    if (isStart(0)) moveStart(v);
     picker.mark(); info(); updateStart();
   });
   picker = {
@@ -588,7 +606,9 @@ if (SIMPLE) {
 
 // ---------- 置き方の値 ----------
 // モデルの点 x は  w + R(θ)·s·(x − P[pivot])  に置く（固定点が w に来る）
-let placed = false, w = new THREE.Vector3(), theta = 0, s = 1, pivot = 0, target = 1;
+let placed = false, w = new THREE.Vector3(), theta = 0, s = 1, pivot = 0, target = PT.length > 1 ? 1 : 0;
+// S（始める場所）のほかに前回拾った Q があれば、Q1 を固定点・Q2 を向ける点にして始める（S は ◀ ▶ で選べる）
+if (PT[0]?.start && PT.length > 1) { pivot = 1; target = PT.length > 2 ? 2 : 0; }
 const obs = new Map();                          // 記録した点：番号 → 十字を当てた位置（AR の座標）
 let aligning = true, allowScale = false, translucent = false;
 
@@ -622,7 +642,11 @@ function setPivot(i) {
   if (target === pivot) target = (pivot + 1) % PT.length;
   apply();
 }
-const step = (i, d, skip) => { do { i = (i + d + PT.length) % PT.length; } while (i === skip); return i; };
+const step = (i, d, skip) => {
+  if (PT.length < 2) return i;                  // 点が 1 つ（S だけ）のときは動かさない
+  do { i = (i + d + PT.length) % PT.length; } while (i === skip);
+  return i;
+};
 function setTarget(i) { target = i; apply(); }
 
 // ---------- 操作 ----------
@@ -637,7 +661,7 @@ function placeHere() {                          // 固定点を十字の位置�
   apply();
 }
 function aimOther() {                           // 向ける点を十字の方向へ（拡大ありなら距離も）
-  if (!lastHit || !placed) return;
+  if (!lastHit || !placed || target === pivot) return;
   const o = target;
   obs.set(o, lastHit.clone());
   const d = P[o].clone().sub(P[pivot]);
@@ -761,8 +785,9 @@ function showUI() {
   $('aim').textContent = `→ ${b} へ向ける`;
   $('add').textContent = `＋ ${b} を足す`;
   $('here').disabled = !lastHit;
-  $('aim').disabled = !lastHit || !placed;
-  $('add').disabled = !lastHit || !placed || PT.length < 3;
+  const noTgt = target === pivot || PT[target].start;   // 向ける点が無い（S だけ・S は大まかなので向けない）
+  $('aim').disabled = !lastHit || !placed || noTgt;
+  $('add').disabled = !lastHit || !placed || PT.length < 3 || noTgt;
   $('near').disabled = !lastHit || !placed;
   $('clr').disabled = obs.size === 0;
   $('pick').disabled = !placed || !cloud;
@@ -772,7 +797,10 @@ function showUI() {
   let st;
   if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>十字を当てた場所の座標が出ます。直すときは「位置合わせ」';
   else if (!lastHit) st = '<span class="mode adj">位置合わせ</span><b>地面を探しています…</b><br>スマホをゆっくり左右に動かしてください';
+  else if (!placed && PT[pivot].start) st = `<span class="mode adj">位置合わせ</span><b>十字を足もと（地図で選んだ始める場所）に当てて「◎ ${a} をここへ」</b><br>点群が大まかな位置に出る`;
   else if (!placed) st = `<span class="mode adj">位置合わせ</span><b>十字を ${a} の印に合わせて「◎ ${a} をここへ」</b>`;
+  else if (PT[pivot].start) st = `<span class="mode adj">位置合わせ</span><b>「点群の点を拾う」→ 現地で分かる所（白線の角など）をタップ</b><br>拾った点が固定点になる。点群は 1 本指でなぞると回る`;
+  else if (noTgt) st = `<span class="mode adj">位置合わせ</span><b>「点群の点を拾う」→ ${a} から離れた所をタップして 2 点目を拾う</b><br>拾ったら十字を現地の同じ所に当てて「→ 向ける」`;
   else if (obs.size < 2) st = `<span class="mode adj">位置合わせ</span><b>十字を ${b} の印に合わせて「→ ${b} へ向ける」</b><br>画面をなぞる・ひねると ${a} を中心に回る。合ったら「固定する」`;
   else st = `<span class="mode adj">位置合わせ</span><b>記録 ${obs.size} 点。ほかの点も十字を当てて「＋ 足す」</b><br>十分に合ったら「固定する」`;
   $('step').innerHTML = st;
@@ -900,8 +928,15 @@ function pickAt(x, y) {
   saveQ();
   addRow(pt);
   setPicking(false);
-  setTarget(PT.length - 1);
   $('check').className = '';
+  if (PT[pivot].start) {                        // 固定点が仮の S なら、拾った点を固定点にする（見た目は変えない）
+    obs.clear();                                // S で当てた記録は大まかなので捨てる
+    setPivot(PT.length - 1);
+    $('check').textContent = `${pt.name} を拾った（X ${site.x.toFixed(2)}　Y ${site.y.toFixed(2)}　標高 ${site.z.toFixed(2)}）。`
+      + `${pt.name} が固定点になった。十字を現実の同じ場所へ当てて「◎ ${pt.name} をここへ」`;
+    return;
+  }
+  setTarget(PT.length - 1);
   $('check').textContent = `${pt.name} を拾った（X ${site.x.toFixed(2)}　Y ${site.y.toFixed(2)}　標高 ${site.z.toFixed(2)}）。`
     + `十字を現実の同じ場所へ当てて「→ ${pt.name} へ向ける」か「＋ ${pt.name} を足す」`;
 }
@@ -942,7 +977,7 @@ $('start').onclick = () => startAR().catch(e => { $('support').textContent = 'AR
 // AR を始めるボタン：simple は始める場所を選んでから
 function updateStart() {
   if (!xrOK) return;
-  const need = SIMPLE && !startAt;
+  const need = STARTPICK && !startAt;
   $('start').disabled = need;
   $('start').textContent = need ? 'AR を始める（先に始める場所を選んでください）' : 'AR を始める';
 }
