@@ -67,7 +67,7 @@ document.body.insertAdjacentHTML('afterbegin', `
 
   <div class="card fullonly">
     <h2>基準点</h2>
-    <table id="points"><thead><tr><th>点</th><th>X</th><th>Y</th><th>標高</th><th>目印</th></tr></thead><tbody></tbody></table>
+    <table id="points"><thead><tr><th>点</th><th>X</th><th>Y</th><th>標高</th><th>目印</th><th></th></tr></thead><tbody></tbody></table>
     <p class="muted" id="qnote" hidden>Q で始まる点は、このスマホで点群から拾って覚えている点です。
       <button id="qclear" type="button">拾った点を消す</button></p>
   </div>
@@ -123,6 +123,7 @@ document.body.insertAdjacentHTML('afterbegin', `
     <div class="row adjonly">
       <button id="near" disabled>近い点</button>
       <button id="clr" disabled>記録を消す</button>
+      <button id="delq" disabled>Q を消す</button>
       <button id="scaleTgl" class="finetune">拡大：なし</button>
     </div>
     <div class="row adjonly cloudonly">
@@ -264,10 +265,17 @@ if (cfg.plan) {
 const f3 = v => Number(v).toFixed(3);
 function addRow(p) {
   $('points').querySelector('tbody').insertAdjacentHTML('beforeend',
-    `<tr><td>${p.name}</td><td>${f3(p.x)}</td><td>${f3(p.y)}</td><td>${f3(p.z)}</td><td>${p.note || ''}</td></tr>`);
+    `<tr data-n="${p.name}"><td>${p.name}</td><td>${f3(p.x)}</td><td>${f3(p.y)}</td><td>${f3(p.z)}</td><td>${p.note || ''}</td>`
+    + `<td>${p.picked ? `<button class="qdel" type="button" data-n="${p.name}">消す</button>` : ''}</td></tr>`);
   if (p.picked) $('qnote').hidden = false;
 }
 PT.forEach(addRow);
+// 拾った点を 1 つずつ消す（表の「消す」。AR の中は「Qn を消す」）
+$('points').querySelector('tbody').addEventListener('click', e => {
+  const b = e.target.closest('.qdel');
+  if (!b || !confirm(`${b.dataset.n} を消します`)) return;
+  removePoint(PT.findIndex(p => p.name === b.dataset.n));
+});
 $('qclear').onclick = () => {
   if (!confirm('このスマホで拾った点（Q）を全部消します')) return;
   try { localStorage.removeItem(QKEY); } catch (e) {}
@@ -791,6 +799,8 @@ function showUI() {
   $('add').disabled = !lastHit || !placed || PT.length < 3 || noTgt;
   $('near').disabled = !lastHit || !placed;
   $('clr').disabled = obs.size === 0;
+  $('delq').textContent = `${b} を消す`;
+  $('delq').disabled = !PT[target].picked || target === pivot;
   $('pick').disabled = !placed || !cloud;
   $('lock').disabled = !placed;
   $('scaleTgl').textContent = allowScale ? '拡大：あり' : '拡大：なし';
@@ -819,6 +829,32 @@ $('pivBtn').onclick = $('tgtBtn').onclick = () => { const o = pivot; setPivot(ta
 $('add').onclick = addPoint;
 $('near').onclick = () => { const n = nearest(pivot); if (n) setTarget(n.i); };
 $('clr').onclick = () => { obs.clear(); $('check').textContent = ''; apply(); };
+$('delq').onclick = () => removePoint(target);
+// 拾った点（Q）を消す。旗・表の行・記録も消し、スマホに覚えた分も書き直す。
+// AR で置いたあとは固定点は消せない（固定点を替えてから消す）。置く前なら固定点も消せる
+function removePoint(k) {
+  if (k < 0 || !PT[k]?.picked || (placed && k === pivot)) return;
+  const name = PT[k].name;
+  PT.splice(k, 1); P.splice(k, 1); flagMats.splice(k, 1);
+  const o = flagObjs.splice(k, 1)[0];
+  ptMarks.remove(o.f, o.sp);
+  const kept = [...obs].filter(([i]) => i !== k).map(([i, v]) => [i > k ? i - 1 : i, v]);
+  obs.clear(); kept.forEach(([i, v]) => obs.set(i, v));
+  if (!placed) {                                // 置く前：始めたときと同じ選び方に戻す
+    pivot = PT[0]?.start && PT.length > 1 ? 1 : 0;
+    target = PT[0]?.start && PT.length > 1 ? (PT.length > 2 ? 2 : 0) : (PT.length > 1 ? 1 : 0);
+  } else {
+    if (pivot > k) pivot--;
+    if (target === k || target >= PT.length) target = PT.length > 1 ? step(pivot, 1, pivot) : pivot;
+    else if (target > k) target--;
+  }
+  saveQ();
+  $('points').querySelector(`tr[data-n="${name}"]`)?.remove();
+  if (!PT.some(p => p.picked)) $('qnote').hidden = true;
+  $('check').className = '';
+  $('check').textContent = `${name} を消した`;
+  if (obs.size >= 2) fitAll(); else apply();
+}
 $('scaleTgl').onclick = () => { allowScale = !allowScale; apply(); };
 $('here').onclick = placeHere;
 $('aim').onclick = aimOther;

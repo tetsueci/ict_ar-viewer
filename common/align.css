@@ -87,3 +87,5 @@ body.simple .fullonly { display: none !important; }
 #overlay .top.folded #fold { float: none; margin: 0; background: rgba(15,18,22,.78); }
 /* 微調整のボタン（回転 0.5°・高さ 5cm・拡大）は config.json の "finetune": true のときだけ */
 body:not(.finetune) #overlay .finetune { display: none !important; }
+/* 表の「消す」（拾った点） */
+.qdel { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--warn); font: inherit; font-size: 12px; padding: 3px 8px; }
