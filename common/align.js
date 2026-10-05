@@ -77,6 +77,9 @@ document.body.insertAdjacentHTML('afterbegin', `
     <img class="plan" id="plan" alt="基準点とモデルの位置関係の平面図">
   </div>
 
+  <p class="disclaimer" role="note"><strong>ご注意：AR で表示するモデルの配置精度（位置・向き・高さ）は保証しません。</strong>
+    スマホのカメラとセンサーで合わせるため、数十 cm 以上ずれることがあります。
+    施工・測量・出来形の判断には使わず、必ず設計図面と現地の測量で確かめてください。</p>
   <button class="start" id="start" disabled>AR を始める</button>
   <div id="support"></div>
   <p class="muted">Android の Chrome（ARCore 対応機）と iPhone で動きます。</p>

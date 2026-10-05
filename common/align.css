@@ -23,6 +23,11 @@ img.plan { width: 100%; height: auto; border: 1px solid var(--line); border-radi
   color: var(--accent-text); font: inherit; font-size: 16px; font-weight: 600; }
 .start:disabled { opacity: .45; }
 #support { margin-top: 8px; font-size: 13px; color: var(--warn); }
+/* AR を始めるボタンの上の注意書き（配置精度を保証しない） */
+.disclaimer { margin: 14px 0 12px; padding: 12px 14px; border: 2px solid var(--warn); border-left-width: 6px;
+  border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, var(--panel)); color: var(--text);
+  font-size: 14px; line-height: 1.6; }
+.disclaimer strong { display: block; color: var(--warn); font-size: 16px; font-weight: 700; margin-bottom: 4px; }
 #support a { color: inherit; }
 
 /* ---- AR 中の画面 ---- */
