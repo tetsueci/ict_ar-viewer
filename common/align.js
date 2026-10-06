@@ -827,9 +827,9 @@ function showUI() {
   paintScales();
 }
 
-// ---------- 縮尺（1/1・1/10・1/100・1/250・1/500 など） ----------
+// ---------- 縮尺（1/1・1/10・1/25・1/50・1/100 など） ----------
 // 選んだ縮尺は固定点を中心に効く（固定点は動かない）。記録した点が 2 つ以上あれば、その縮尺で合わせ直す
-const SCALES = cfg.scales === false ? [] : (Array.isArray(cfg.scales) ? cfg.scales : [1, 10, 100, 250, 500]);
+const SCALES = cfg.scales === false ? [] : (Array.isArray(cfg.scales) ? cfg.scales : [1, 10, 25, 50, 100]);
 if (!SCALES.length) $('scalerow').remove();
 else SCALES.forEach(k => {
   const b = document.createElement('button');
