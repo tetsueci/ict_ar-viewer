@@ -129,6 +129,8 @@ document.body.insertAdjacentHTML('afterbegin', `
       <button id="delq" disabled>Q を消す</button>
       <button id="scaleTgl" class="finetune">拡大：なし</button>
     </div>
+    <!-- 縮尺（モデル・点群・旗をまとめて固定点を中心に縮める）。config.json の "scales" で選べる値を変える／false で出さない -->
+    <div class="row adjonly" id="scalerow"><span class="lbl">縮尺</span></div>
     <div class="row adjonly cloudonly">
       <button id="pick" disabled>点群の点を拾う</button>
       <button id="cloud1">点群：小</button>
@@ -682,9 +684,10 @@ function aimOther() {                           // 向ける点を十字の方�
   const dh = Math.hypot(d.x, d.z), qh = Math.hypot(q.x, q.z);
   if (allowScale) s = qh / dh;
   const diff = (qh - dh * s) * 100;
-  const bad = Math.abs(qh - dh) > 0.2;
+  const bad = Math.abs(qh - dh * s) > 0.2;
   $('check').className = bad ? 'bad' : '';
   $('check').textContent = `${PT[pivot].name}–${PT[o].name} の距離　現地 ${qh.toFixed(2)} m ／ 図面 ${dh.toFixed(2)} m`
+    + (!allowScale && Math.abs(s - 1) > 1e-9 ? `×1/${Math.round(1 / s)}＝${(dh * s).toFixed(2)} m` : '')
     + (allowScale ? `（大きさを ${(s * 100).toFixed(1)}% に合わせた）` : `（差 ${diff >= 0 ? '+' : ''}${diff.toFixed(0)} cm）`)
     + (bad && !allowScale ? '　★差が大きい。点の取り違えか、十字の当て違い' : '');
   apply();
@@ -819,9 +822,32 @@ function showUI() {
   else st = `<span class="mode adj">位置合わせ</span><b>記録 ${obs.size} 点。ほかの点も十字を当てて「＋ 足す」</b><br>十分に合ったら「固定する」`;
   $('step').innerHTML = st;
   $('info').textContent = placed
-    ? `固定点 ${a}　向き ${(((theta / DEG) % 360 + 540) % 360 - 180).toFixed(1)}°　大きさ ${(s * 100).toFixed(1)}%${allowScale ? '' : '（実寸）'}`
+    ? `固定点 ${a}　向き ${(((theta / DEG) % 360 + 540) % 360 - 180).toFixed(1)}°　大きさ ${(s * 100).toFixed(1)}%${scaleText()}`
     : '';
+  paintScales();
 }
+
+// ---------- 縮尺（1/1・1/2・1/5・1/10 など） ----------
+// 選んだ縮尺は固定点を中心に効く（固定点は動かない）。記録した点が 2 つ以上あれば、その縮尺で合わせ直す
+const SCALES = cfg.scales === false ? [] : (Array.isArray(cfg.scales) ? cfg.scales : [1, 2, 5, 10]);
+if (!SCALES.length) $('scalerow').remove();
+else SCALES.forEach(k => {
+  const b = document.createElement('button');
+  b.textContent = `1/${k}`;
+  b.dataset.k = k;
+  b.onclick = () => setScale(k);
+  $('scalerow').appendChild(b);
+});
+function setScale(k) {
+  allowScale = false;                           // 指で大きさを変える（拡大：あり）は切る
+  s = 1 / k;
+  if (obs.size >= 2) fitAll(); else apply();
+}
+function paintScales() {
+  document.querySelectorAll('#scalerow button').forEach(b =>
+    b.classList.toggle('sel', !allowScale && Math.abs(s * b.dataset.k - 1) < 1e-9));
+}
+function scaleText() { return allowScale ? '' : (Math.abs(s - 1) < 1e-9 ? '（実寸）' : `（縮尺 1/${Math.round(1 / s)}）`); }
 
 // ボタン
 $('pp').onclick = () => setPivot(step(pivot, -1, -1));
