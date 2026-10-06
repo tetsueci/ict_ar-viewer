@@ -59,7 +59,13 @@ img.plan { width: 100%; height: auto; border: 1px solid var(--line); border-radi
 #overlay button.green { background: #2b8a3e; color: #fff; }
 #overlay button.sel { outline: 3px solid #ffd43b; }
 #scalerow .lbl { align-self: center; color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
-#scalerow button { min-width: 48px; }
+input.scn { width: 64px; padding: 8px 6px; font: inherit; font-size: 16px; text-align: center; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+#scalerow input.scn { border: 0; background: rgba(255,255,255,.92); color: #14171c; }
+.scbox .sl { align-self: center; margin: 0 4px; font-size: 18px; font-weight: 700; }
+#scalerow .sl { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+.scline { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.scline .muted { margin-left: 8px; }
 #overlay button:disabled { opacity: .4; }
 .adjonly { display: none !important; }
 #overlay.aligning .adjonly { display: flex !important; }

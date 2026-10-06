@@ -77,6 +77,12 @@ document.body.insertAdjacentHTML('afterbegin', `
     <img class="plan" id="plan" alt="基準点とモデルの位置関係の平面図">
   </div>
 
+  <div class="card scbox" id="scalecard">
+    <h2>縮尺</h2>
+    <p class="scline"><input class="scn" data-i="0" type="number" inputmode="decimal" min="0" step="any" value="1" aria-label="縮尺の分子"><span class="sl">/</span><input class="scn" data-i="1" type="number" inputmode="decimal" min="0" step="any" value="1" aria-label="縮尺の分母"><span class="muted">（既定 1/1＝実寸。例 1/10・1/50）</span></p>
+    <p class="muted">モデルと点群をまとめて、固定点を中心に縮めます。AR の中の位置合わせの画面でも変えられます。</p>
+  </div>
+
   <p class="disclaimer" role="note"><strong>ご注意：AR で表示するモデルの配置精度（位置・向き・高さ）は保証しません。</strong>
     スマホのカメラとセンサーで合わせるため、数十 cm 以上ずれることがあります。
     施工・測量・出来形の判断には使わず、必ず設計図面と現地の測量で確かめてください。</p>
@@ -129,8 +135,8 @@ document.body.insertAdjacentHTML('afterbegin', `
       <button id="delq" disabled>Q を消す</button>
       <button id="scaleTgl" class="finetune">拡大：なし</button>
     </div>
-    <!-- 縮尺（モデル・点群・旗をまとめて固定点を中心に縮める）。config.json の "scales" で選べる値を変える／false で出さない -->
-    <div class="row adjonly" id="scalerow"><span class="lbl">縮尺</span></div>
+    <!-- 縮尺 □/□（モデル・点群・旗をまとめて固定点を中心に縮める）。config.json の "scales": false で出さない -->
+    <div class="row adjonly scbox" id="scalerow"><span class="lbl">縮尺</span><input class="scn" data-i="0" type="number" inputmode="decimal" min="0" step="any" value="1" aria-label="縮尺の分子"><span class="sl">/</span><input class="scn" data-i="1" type="number" inputmode="decimal" min="0" step="any" value="1" aria-label="縮尺の分母"></div>
     <div class="row adjonly cloudonly">
       <button id="pick" disabled>点群の点を拾う</button>
       <button id="cloud1">点群：小</button>
@@ -687,7 +693,7 @@ function aimOther() {                           // 向ける点を十字の方�
   const bad = Math.abs(qh - dh * s) > 0.2;
   $('check').className = bad ? 'bad' : '';
   $('check').textContent = `${PT[pivot].name}–${PT[o].name} の距離　現地 ${qh.toFixed(2)} m ／ 図面 ${dh.toFixed(2)} m`
-    + (!allowScale && Math.abs(s - 1) > 1e-9 ? `×1/${Math.round(1 / s)}＝${(dh * s).toFixed(2)} m` : '')
+    + (!allowScale && Math.abs(s - 1) > 1e-9 ? `×${fmt(scN)}/${fmt(scD)}＝${(dh * s).toFixed(2)} m` : '')
     + (allowScale ? `（大きさを ${(s * 100).toFixed(1)}% に合わせた）` : `（差 ${diff >= 0 ? '+' : ''}${diff.toFixed(0)} cm）`)
     + (bad && !allowScale ? '　★差が大きい。点の取り違えか、十字の当て違い' : '');
   apply();
@@ -827,27 +833,38 @@ function showUI() {
   paintScales();
 }
 
-// ---------- 縮尺（1/1・1/10・1/25・1/50・1/100 など） ----------
-// 選んだ縮尺は固定点を中心に効く（固定点は動かない）。記録した点が 2 つ以上あれば、その縮尺で合わせ直す
-const SCALES = cfg.scales === false ? [] : (Array.isArray(cfg.scales) ? cfg.scales : [1, 10, 25, 50, 100]);
-if (!SCALES.length) $('scalerow').remove();
-else SCALES.forEach(k => {
-  const b = document.createElement('button');
-  b.textContent = `1/${k}`;
-  b.dataset.k = k;
-  b.onclick = () => setScale(k);
-  $('scalerow').appendChild(b);
-});
-function setScale(k) {
+// ---------- 縮尺（□/□ を数字で入れる。既定 1/1） ----------
+// 起動画面と AR の中の 2 か所に同じ欄がある（どちらで入れても同じ）。縮尺は固定点を中心に効く（固定点は動かない）。
+// 記録した点が 2 つ以上あれば、その縮尺で合わせ直す。config.json の "scales": false で出さない
+let scN = 1, scD = 1;                            // いまの縮尺 scN/scD
+if (cfg.scales === false) { $('scalerow').remove(); $('scalecard').remove(); }
+const scInputs = () => [...document.querySelectorAll('input.scn')];
+const fmt = v => String(+v.toFixed(3));
+function setRatio(n, d) {
+  scN = n; scD = d;
   allowScale = false;                           // 指で大きさを変える（拡大：あり）は切る
-  s = 1 / k;
-  if (obs.size >= 2) fitAll(); else apply();
+  s = n / d;
+  if (obs.size >= 2) fitAll();
+  else if (P.length) apply();                   // 起動画面で点がまだ無いときは値だけ覚える
 }
-function paintScales() {
-  document.querySelectorAll('#scalerow button').forEach(b =>
-    b.classList.toggle('sel', !allowScale && Math.abs(s * b.dataset.k - 1) < 1e-9));
+scInputs().forEach(el => el.addEventListener('change', () => {
+  const box = el.closest('.scbox');
+  const [a, b] = [...box.querySelectorAll('input.scn')].map(x => parseFloat(x.value));
+  if (!(a > 0) || !(b > 0)) { paintScales(true); return; }   // 0・空・負は受け付けず元に戻す
+  setRatio(a, b);
+  paintScales(true);
+}));
+// 欄の数字をいまの縮尺にそろえる（入力中の欄は書き換えない）
+function paintScales(force) {
+  if (allowScale || Math.abs(scN / scD - s) > 1e-9) {          // 指や「実寸に戻す」で変わったとき
+    if (s >= 1) { scN = +s.toFixed(3); scD = 1; } else { scN = 1; scD = +(1 / s).toFixed(3); }
+  }
+  scInputs().forEach(el => {
+    if (!force && el === document.activeElement) return;
+    el.value = fmt(el.dataset.i === '0' ? scN : scD);
+  });
 }
-function scaleText() { return allowScale ? '' : (Math.abs(s - 1) < 1e-9 ? '（実寸）' : `（縮尺 1/${Math.round(1 / s)}）`); }
+function scaleText() { return allowScale ? '' : (Math.abs(s - 1) < 1e-9 ? '（実寸）' : `（縮尺 ${fmt(scN)}/${fmt(scD)}）`); }
 
 // ボタン
 $('pp').onclick = () => setPivot(step(pivot, -1, -1));
