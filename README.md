@@ -1,6 +1,6 @@
 # 3D モデル AR ビューア（Google model-viewer + GitHub Pages）
 
-> **このリポジトリ（ict_ar-viewer）は暗号化したフォルダだけを置く。** 平文のモデル・点群・平面図は置かない
+> **このリポジトリ（ict_ar-viewer）は原則、暗号化したフォルダだけを置く**（例外：BRIDGEPOINT/ はパスワードなしで公開。2026-10-06 決定）。 平文のモデル・点群・平面図は置かない
 > （置くと履歴に残り、消しても取り出せる）。中身は `_plain/` で作って `tools/encrypt_site.py` で暗号化する
 > （「暗号化して置く」の節）。2026-10-02 に ict_ar-model-viewer から、履歴を持たずに分けた。
 > 平文の現場はまだ ict_ar-model-viewer にある。
