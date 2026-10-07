@@ -1,7 +1,10 @@
 """LAS（1.2〜1.4・点の形式 0〜3、6〜8）→ 間引いた点群の GLB（現場合わせのフォルダへ pointcloud.glb）。
 
     python tools/las_to_points.py <点群.las> --out <フォルダ> --crop xmin,ymin,xmax,ymax --voxel 0.1
+    python tools/las_to_points.py 地表面.las 構造物.las ボックス.las --out <フォルダ> --voxel 0.2,0.1,0.05
 
+- LAS は何本でもよい。1 つの点群（pointcloud.glb）にまとめる（common/align.js が読むのは 1 本だけ）。
+  --voxel をカンマで並べると、LAS ごとに間引きの格子を変えられる（地表面は粗く・構造物は細かく）
 - 範囲（--crop、平面直角座標の m）で切り、--voxel（m）の格子ごとに 1 点だけ残す（格子に入った最初の点）
 - 座標はフォルダの config.json の origin を引いて入れる（モデルと同じ。common/align.js が足し戻す）。
   Z 上向きを glTF の Y 上向きへ回す
@@ -43,12 +46,48 @@ def read_header(path):
     return off, fmt, rl, n, sc, of
 
 
+def sample(path, voxel, crop, O, chunk):
+    """1 本の LAS を読み、voxel の格子ごとに 1 点残す。(座標 − origin, RGB 8bit または None, 元の点数)"""
+    off, fmt, rl, n, sc, of = read_header(path)
+    mm = np.memmap(path, dtype=np.uint8, mode="r", offset=off, shape=(n, rl))
+    rgb_at = RGB_AT.get(fmt)
+    keys, xyz, rgb = [], [], []
+    for s in range(0, n, chunk):
+        b = np.ascontiguousarray(mm[s:s + chunk])
+        ijk = b[:, :12].copy().view("<i4").reshape(-1, 3)
+        p = ijk * sc + of
+        if crop:
+            k = (p[:, 0] >= crop[0]) & (p[:, 1] >= crop[1]) & (p[:, 0] <= crop[2]) & (p[:, 1] <= crop[3])
+            p, b = p[k], b[k]
+        if not len(p):
+            continue
+        g = np.floor((p - O) / voxel).astype(np.int64) + (1 << 20)       # 格子の番号（±100 km まで）
+        keys.append((g[:, 0] << 42) | (g[:, 1] << 21) | g[:, 2])
+        xyz.append((p - O).astype(np.float32))
+        if rgb_at is not None:
+            rgb.append(b[:, rgb_at:rgb_at + 6].copy().view("<u2").reshape(-1, 3))
+        print(f"  {os.path.basename(path)}  {min(s + chunk, n):,} / {n:,} 点を読んだ"
+              f"（範囲内 {sum(len(x) for x in xyz):,}）", flush=True)
+    if not keys:
+        return np.zeros((0, 3), np.float32), None, n
+    key = np.concatenate(keys)
+    _, first = np.unique(key, return_index=True)
+    first.sort()
+    p = np.concatenate(xyz)[first]
+    c = None
+    if rgb:
+        c = np.concatenate(rgb)[first]
+        c = ((c >> 8) if c.max() > 255 else c).astype(np.uint8)
+    print(f"  {os.path.basename(path)}  {len(p):,} 点（元 {n:,} 点・格子 {voxel} m）", flush=True)
+    return p, c, n
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("las")
+    ap.add_argument("las", nargs="+")
     ap.add_argument("--out", required=True, help="現場合わせのフォルダ（config.json の origin を使う）")
     ap.add_argument("--crop", help="xmin,ymin,xmax,ymax（m）。無ければ全体")
-    ap.add_argument("--voxel", type=float, default=0.1, help="間引きの格子（m）")
+    ap.add_argument("--voxel", default="0.1", help="間引きの格子（m）。LAS ごとに変えるならカンマで並べる")
     ap.add_argument("--name", default="pointcloud.glb")
     ap.add_argument("--no-compress", action="store_true")
     ap.add_argument("--chunk", type=int, default=5_000_000)
@@ -57,41 +96,28 @@ def main():
     with open(os.path.join(out, "config.json"), encoding="utf-8") as fi:
         cfg = json.load(fi)
     O = np.array([cfg.get("origin", {}).get(k, 0.0) for k in "xyz"])
+    vox = [float(v) for v in str(a.voxel).split(",")]
+    if len(vox) == 1:
+        vox = vox * len(a.las)
+    if len(vox) != len(a.las):
+        raise SystemExit(f"--voxel の数（{len(vox)}）と LAS の数（{len(a.las)}）が合いません")
+    crop = [float(c) for c in a.crop.split(",")] if a.crop else None
 
     t0 = time.time()
-    off, fmt, rl, n, sc, of = read_header(a.las)
-    mm = np.memmap(a.las, dtype=np.uint8, mode="r", offset=off, shape=(n, rl))
-    crop = [float(c) for c in a.crop.split(",")] if a.crop else None
-    rgb_at = RGB_AT.get(fmt)
-    keys, xyz, rgb = [], [], []
-    v = a.voxel
-    for s in range(0, n, a.chunk):
-        b = np.ascontiguousarray(mm[s:s + a.chunk])
-        ijk = b[:, :12].copy().view("<i4").reshape(-1, 3)
-        p = ijk * sc + of
-        if crop:
-            k = (p[:, 0] >= crop[0]) & (p[:, 1] >= crop[1]) & (p[:, 0] <= crop[2]) & (p[:, 1] <= crop[3])
-            p, b = p[k], b[k]
+    ps, cs, ntot = [], [], 0
+    for path, v in zip(a.las, vox):
+        p, c, n = sample(path, v, crop, O, a.chunk)
+        ntot += n
         if not len(p):
             continue
-        g = np.floor((p - O) / v).astype(np.int64) + (1 << 20)           # 格子の番号（±100 km まで）
-        keys.append((g[:, 0] << 42) | (g[:, 1] << 21) | g[:, 2])
-        xyz.append((p - O).astype(np.float32))
-        if rgb_at is not None:
-            rgb.append(b[:, rgb_at:rgb_at + 6].copy().view("<u2").reshape(-1, 3))
-        print(f"  {min(s + a.chunk, n):,} / {n:,} 点を読んだ（範囲内 {sum(len(x) for x in xyz):,}）", flush=True)
-    key = np.concatenate(keys)
-    _, first = np.unique(key, return_index=True)
-    first.sort()
-    p = np.concatenate(xyz)[first]
-    if rgb:
-        c = np.concatenate(rgb)[first]
-        c = (c >> 8) if c.max() > 255 else c
-        col = c.astype(np.uint8)
-    else:
-        z = p[:, 2]
-        t = (z - z.min()) / max(1e-6, z.max() - z.min())
-        col = (np.stack([t, 1 - abs(t - 0.5) * 2, 1 - t], axis=1) * 255).astype(np.uint8)
+        if c is None:                                   # 色が無い形式は高さで塗る
+            z = p[:, 2]
+            t = (z - z.min()) / max(1e-6, z.max() - z.min())
+            c = (np.stack([t, 1 - abs(t - 0.5) * 2, 1 - t], axis=1) * 255).astype(np.uint8)
+        ps.append(p)
+        cs.append(c)
+    p = np.concatenate(ps)
+    col = np.concatenate(cs)
     pos = np.stack([p[:, 0], p[:, 2], -p[:, 1]], axis=1).astype(np.float32)   # Z 上 → Y 上
     col4 = np.concatenate([col, np.full((len(col), 1), 255, np.uint8)], axis=1)
 
@@ -107,7 +133,8 @@ def main():
         json.dump(cfg, fo, ensure_ascii=False, indent=2)
         fo.write("\n")
     lo, hi = p.min(axis=0) + O, p.max(axis=0) + O
-    print(f"{a.name}  {len(p):,} 点（元 {n:,} 点・格子 {v} m）  {os.path.getsize(path) / 1e6:.2f} MB  {time.time() - t0:.0f} 秒")
+    print(f"{a.name}  {len(p):,} 点（元 {ntot:,} 点・格子 {', '.join(str(v) for v in vox)} m）  "
+          f"{os.path.getsize(path) / 1e6:.2f} MB  {time.time() - t0:.0f} 秒")
     print(f"  範囲 X {lo[0]:.2f}〜{hi[0]:.2f}  Y {lo[1]:.2f}〜{hi[1]:.2f}  Z {lo[2]:.2f}〜{hi[2]:.2f}")
 
 

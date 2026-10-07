@@ -31,6 +31,36 @@ LAYER_COLOR = {
     "RDM_SLOPE_CONE": (0.52, 0.66, 0.40),
     "RDM_BOX": (0.78, 0.78, 0.74),
 }
+# 上に無い画層は名前の頭で決める（上から順に当てる）。plan の重ね順もこの順（下に敷くものから）
+LAYER_RULES = [
+    ("GROUND_", (0.62, 0.55, 0.42)),            # 地表面
+    ("GI_", (0.58, 0.50, 0.66)),                # 地盤改良
+    ("SLOPE_", (0.47, 0.62, 0.36)),             # 法面
+    ("WALL_", (0.80, 0.74, 0.60)),              # 補強土壁
+    ("ROAD_", (0.33, 0.33, 0.35)),              # 路面
+    ("MARK_", (0.96, 0.96, 0.96)),              # 白線
+    ("STR_ラバーポール", (0.95, 0.55, 0.10)),
+    ("STR_防護柵", (0.86, 0.86, 0.89)),
+    ("STR_立入防止柵", (0.45, 0.60, 0.45)),
+    ("STR_側溝", (0.66, 0.66, 0.64)),
+    ("STR_", (0.78, 0.78, 0.74)),               # 構造物（ボックス・橋台・翼壁など）
+]
+
+
+def color_of(lay):
+    if lay in LAYER_COLOR:
+        return LAYER_COLOR[lay]
+    for head, col in LAYER_RULES:
+        if lay.startswith(head):
+            return col
+    return (0.7, 0.7, 0.7)
+
+
+def layer_order(lay):
+    for k, (head, _) in enumerate(LAYER_RULES):
+        if lay.startswith(head):
+            return k
+    return -1                                   # RDM_* などは先に（いままでどおり）
 
 
 def read_pairs(path):
@@ -187,6 +217,51 @@ def box_volume(b):
 
 # ---------- 平面図 ----------
 def write_plan(faces, points, path, title):
+    if len(points) < 2:
+        return write_plan_nopoints(faces, path, title)
+    return write_plan_points(faces, points, path, title)
+
+
+def write_plan_nopoints(faces, path, title):
+    """基準点を前もって決めない現場（start = pick。AR の前に点群の上で点を拾う）の平面図と凡例"""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import PolyCollection
+    plt.rcParams["font.family"] = ["Yu Gothic", "Meiryo", "MS Gothic", "sans-serif"]
+    lays = sorted((l for l in faces if faces[l]), key=lambda l: (layer_order(l), l))
+    allp = np.array([p for l in lays for t in faces[l] for p in t])
+    span = allp.max(axis=0) - allp.min(axis=0)
+    tall = span[1] > span[0] * 1.3                  # 縦に長い現場は 図｜凡例 を横に並べる
+    fig = plt.figure(figsize=(11, 9) if tall else (11, 8.6), dpi=110)
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.4, 1]) if tall else fig.add_gridspec(2, 1, height_ratios=[2.6, 1])
+    ax = fig.add_subplot(gs[0])
+    leg = fig.add_subplot(gs[1])
+    for lay in lays:
+        polys = [[(p[0], p[1]) for p in t] for t in faces[lay]]
+        ax.add_collection(PolyCollection(polys, facecolors=[color_of(lay)], edgecolors="none"))
+    ax.set_xlim(allp[:, 0].min() - 5, allp[:, 0].max() + 5)
+    ax.set_ylim(allp[:, 1].min() - 5, allp[:, 1].max() + 5)
+    ax.set_aspect("equal")
+    ax.grid(True, color="#dddddd", lw=0.5)
+    ax.set_xlabel("X（東）m")
+    ax.set_ylabel("Y（北）m")
+    ax.set_title(f"{title}\n基準点は AR の前に点群の上で選ぶ", fontsize=12)
+    leg.axis("off")
+    ncol = 1 if tall else 3                         # 画層の名前はそのまま書く（頭を外すと「ランプ」が 2 つになる）
+    per = (len(lays) + ncol - 1) // ncol
+    step = 0.9 / max(per, 1)
+    for k, lay in enumerate(lays):
+        cx, cy = (k // per) / ncol, 0.95 - (k % per) * step
+        leg.add_patch(plt.Rectangle((cx + 0.01, cy - step * 0.35), 0.05 if tall else 0.03, step * 0.7,
+                                    color=color_of(lay), ec="#888888", lw=0.4, transform=leg.transAxes))
+        leg.text(cx + (0.08 if tall else 0.05), cy, lay, transform=leg.transAxes, va="center", fontsize=9.5)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+
+def write_plan_points(faces, points, path, title):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -260,6 +335,9 @@ def main():
     ap.add_argument("--out", default=os.path.join(ROOT, "align"))
     ap.add_argument("--points", help='基準点を直接指定 "X,Y,Z;X,Y,Z"（鉛直の LINE より優先）')
     ap.add_argument("--points-note", default="", help="--points の点の説明（config.json の note に入る）")
+    ap.add_argument("--origin", help='座標から引く原点 "X,Y,Z" か auto（100 m 単位に丸めた中心）。'
+                                     '平面直角座標のままだと float32 で mm が崩れるので、大きい座標なら付ける')
+    ap.add_argument("--start", help="基準点を前もって決めないとき pick（AR の前に点群の上で選ぶ。点群が要る）")
     a = ap.parse_args()
 
     faces, lines = parse(a.dxf)
@@ -281,15 +359,23 @@ def main():
         for k, s in enumerate(a.points.split(";")):
             x, y, z = (float(c) for c in s.split(","))
             pts.append({"name": f"P{k + 1}", "x": x, "y": y, "z": z, "note": notes[k] if k < len(notes) else "指定した点"})
-    if len(pts) < 2:
-        raise SystemExit(f"鉛直の LINE が {len(pts)} 本しかありません（2 本要る）")
+    if len(pts) < 2 and not a.start:
+        raise SystemExit(f"鉛直の LINE が {len(pts)} 本しかありません（2 本要る。点群の上で選ぶなら --start pick）")
+
+    O = np.zeros(3)
+    if a.origin == "auto":
+        allv = np.array([p for tris in faces.values() for t in tris for p in t])
+        c = (allv.min(axis=0) + allv.max(axis=0)) / 2
+        O = np.array([round(c[0], -2), round(c[1], -2), 0.0])
+    elif a.origin:
+        O = np.array([float(c) for c in a.origin.split(",")])
 
     groups = {}
     for lay, tris in faces.items():
         if not tris:
             continue
-        col = LAYER_COLOR.get(lay, (0.7, 0.7, 0.7)) + (1.0,)
-        v = np.array(tris, float).reshape(-1, 3)
+        col = color_of(lay) + (1.0,)
+        v = np.array(tris, float).reshape(-1, 3) - O
         t = np.arange(len(v)).reshape(-1, 3)
         if col in groups:
             v0, t0 = groups[col]
@@ -300,15 +386,27 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     copy_page(a.out)                          # 新しいフォルダには入口のひな形を写す（中身は common/）
     n = write_glb(os.path.join(a.out, "model.glb"), groups, name="model")
-    cfg = {
+    # 前の config.json の項目（pointcloud・finetune など）は残し、この道具が決める項目だけ書き換える
+    cpath = os.path.join(a.out, "config.json")
+    cfg = {}
+    if os.path.exists(cpath):
+        with open(cpath, encoding="utf-8") as fi:
+            cfg = json.load(fi)
+    cfg.update({
         "title": a.title,
         "version": __import__("time").strftime("%Y%m%d%H%M%S"),   # 画像とモデルの読み直し用（ブラウザの覚えた古いものを使わせない）
         "model": "model.glb",
         "plan": "plan.png",
         "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
         "points": pts[:2],
-    }
-    with open(os.path.join(a.out, "config.json"), "w", encoding="utf-8", newline="\n") as fo:
+    })
+    if O.any():
+        cfg["origin"] = {"x": float(O[0]), "y": float(O[1]), "z": float(O[2])}
+    else:
+        cfg.pop("origin", None)
+    if a.start:
+        cfg["start"] = a.start
+    with open(cpath, "w", encoding="utf-8", newline="\n") as fo:
         json.dump(cfg, fo, ensure_ascii=False, indent=2)
         fo.write("\n")
     write_plan(faces, pts[:2], os.path.join(a.out, "plan.png"), a.title)
@@ -318,9 +416,12 @@ def main():
         print(f"  {lay:16s} 三角形 {len(tris):6d}")
     for b in boxes:
         print(f"  ボックス {b['name']}  体積 {box_volume(b):.2f} m3")
+    if O.any():
+        print(f"  原点 {O[0]:.0f}, {O[1]:.0f}, {O[2]:.0f}（座標から引いて入れた）")
     for p in pts:
         print(f"  {p['name']}  X {p['x']:.3f}  Y {p['y']:.3f}  Z {p['z']:.3f}")
-    print(f"  P1–P2 {math.hypot(pts[1]['x'] - pts[0]['x'], pts[1]['y'] - pts[0]['y']):.3f} m")
+    if len(pts) >= 2:
+        print(f"  P1–P2 {math.hypot(pts[1]['x'] - pts[0]['x'], pts[1]['y'] - pts[0]['y']):.3f} m")
 
 
 if __name__ == "__main__":
