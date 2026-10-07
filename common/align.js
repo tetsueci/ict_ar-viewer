@@ -281,17 +281,24 @@ function addRow(p) {
   if (p.picked) $('qnote').hidden = false;
 }
 PT.forEach(addRow);
+// 消す前の確かめは confirm() を使わず「もう一度押す」にする。
+// iPhone の Variant Launch（App Clip）の中では confirm() のダイアログが出ないことがあり、拾った点が消せなかった（2026-10-07 報告）
+function tapTwice(b, text, act) {
+  if (b.dataset.armed) { clearTimeout(+b.dataset.armed); delete b.dataset.armed; act(); return; }
+  const was = b.textContent;
+  b.textContent = text; b.classList.add('armed');
+  b.dataset.armed = setTimeout(() => { delete b.dataset.armed; b.textContent = was; b.classList.remove('armed'); }, 3000);
+}
 // 拾った点を 1 つずつ消す（表の「消す」。AR の中は「Qn を消す」）
 $('points').querySelector('tbody').addEventListener('click', e => {
   const b = e.target.closest('.qdel');
-  if (!b || !confirm(`${b.dataset.n} を消します`)) return;
-  removePoint(PT.findIndex(p => p.name === b.dataset.n));
+  if (!b) return;
+  tapTwice(b, 'もう一度押すと消す', () => removePoint(PT.findIndex(p => p.name === b.dataset.n)));
 });
-$('qclear').onclick = () => {
-  if (!confirm('このスマホで拾った点（Q）を全部消します')) return;
+$('qclear').onclick = e => tapTwice(e.currentTarget, 'もう一度押すと全部消す', () => {
   try { localStorage.removeItem(QKEY); } catch (e) {}
   location.reload();
-};
+});
 if (cfg.pointcloud) document.body.classList.add('hascloud');
 
 // 現場座標（X=東, Y=北, Z=標高）⇔ glTF（x, y=上, z=南）
