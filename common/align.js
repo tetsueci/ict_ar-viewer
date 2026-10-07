@@ -370,10 +370,7 @@ loadGlb(cfg.model).then(sc => { modelRoot = sc; group.add(modelRoot); picker?.ad
 
 // 点群（任意。config.json の pointcloud。tools/las_to_points.py で作る）。
 // 点の大きさは画面の画素で決める（遠くても小さくならない）。cloudSize：0＝出さない
-// 点群の点の大きさ：画素の固定ではなく、点の間隔に合わせた実際の大きさ（m）で描く（近くの点ほど大きく見え、すき間が埋まる）。
-// 10 cm に間引いた点群が 2 画素ではスカスカに見えた（2026-10-08）。小＝間隔の 1.0 倍、大＝1.8 倍
-const CLOUD_M = [0, 1.0, 1.8];
-let cloudStep = 0.1;                            // 点の間隔の目安（m）。読み込んだときに数えて決める
+const CLOUD_PX = [0, 2, 4];
 let cloud = null, cloudSize = 1;
 const cloudGrid = new Map();                    // 0.5 m 角の升 → その升の点（group の中の座標・x,y,z の並び）
 const CELL = 0.5;
@@ -385,7 +382,7 @@ if (cfg.pointcloud) {
     const v = new THREE.Vector3();
     sc.traverse(o => {
       if (!o.isPoints) return;
-      o.material = new THREE.PointsMaterial({ size: 0.1, sizeAttenuation: true, vertexColors: true });
+      o.material = new THREE.PointsMaterial({ size: CLOUD_PX[cloudSize], sizeAttenuation: false, vertexColors: true });
       const a = o.geometry.getAttribute('position');
       for (let i = 0; i < a.count; i++) {
         v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
@@ -395,12 +392,7 @@ if (cfg.pointcloud) {
         c.push(v.x, v.y, v.z);
       }
     });
-    // 点の間隔の目安＝1 / √(点の数 ÷ 点のある升の面積)。2 cm〜50 cm に収める
-    let nPts = 0;
-    for (const c of cloudGrid.values()) nPts += c.length / 3;
-    cloudStep = Math.min(0.5, Math.max(0.02, 1 / Math.sqrt(nPts / (cloudGrid.size * CELL * CELL))));
     cloud = sc; group.add(cloud);
-    paintCloudSize();
     $('support').textContent = '';
     if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
     picker?.addCloud(sc);
@@ -441,15 +433,7 @@ function setCloudSize(k) {
   $('cloud1').textContent = $('cloud2').textContent = t;
   if (!cloud) return;
   cloud.visible = k > 0;
-  paintCloudSize();
-}
-// 点の大きさ（m）＝間隔×倍率×縮尺（縮めたときは点も縮める）
-function paintCloudSize() {
-  if (!cloud) return;
-  let k = 1;
-  try { k = s; } catch (e) { /* 点群のほうが置き方の値（s）より先に読み終わったとき */ }
-  const sz = cloudStep * CLOUD_M[cloudSize] * k;
-  cloud.traverse(o => { if (o.isPoints && o.material.size !== sz) o.material.size = sz; });
+  cloud.traverse(o => { if (o.isPoints) o.material.size = CLOUD_PX[k]; });
 }
 
 // 固定している点の目印（黄色の輪。モデルの中に置く）
@@ -675,7 +659,6 @@ function apply() {
   tgtMark.position.copy(P[target]); tgtMark.position.y += 0.006;
   tgtMark.visible = aligning;
   paintFlags();
-  paintCloudSize();
   showUI();
 }
 // 固定中に（アンカーで）動いた行列から値を読み直す
