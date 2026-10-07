@@ -399,7 +399,7 @@ if (cfg.pointcloud) {
     if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
     picker?.addCloud(cloud);
     sc.traverse(o => o.geometry?.dispose());     // 元の 1 本は使わない（升に分けた写しを使う）
-    paintRange();
+    paintRange(); thinCloud();
   }).catch(() => { $('support').textContent = '点群を読めませんでした（' + cfg.pointcloud + '）'; });
 }
 // 点群の外接箱の真ん中にいちばん近い地面の点（真ん中の 3 m 以内でいちばん低い点。無ければ箱の底）
@@ -437,7 +437,12 @@ function cloudDist(c) {
 const TILE = 20;
 const RANGES = [25, 50, 100, 0];                // 0＝全部
 let cloudRange = RANGES.includes(cfg.cloudRange) ? cfg.cloudRange : 50;
-let tiles = [];                                 // { obj, x0, x1, z0, z1 }（group の中の座標）
+let tiles = [];                                 // { obj, n, x0, x1, z0, z1 }（group の中の座標・n＝点の数）
+// 縮尺に合わせて間引く：机の上で点の間隔が CLOUD_GAP（m）より詰まる分だけ描かない（2026-10-08）。
+// 升ごとに点の順番を混ぜておき、先頭から何点まで描くか（drawRange）だけ変える＝縮尺を変えても計算は要らない。
+// 描く割合＝min(1, (点の間隔×縮尺 ÷ CLOUD_GAP)²)。10 cm 間隔なら 1/100 で 44%・1/200 で 11%・1/500 で 2%
+const CLOUD_GAP = (cfg.cloudGap || 1.5) / 1000;   // config.json の "cloudGap"（mm）。既定 1.5 mm
+let cloudStep = 0.1;                            // 点の間隔の目安（m）。読み込んだときに数える
 function splitTiles(sc) {
   const buckets = new Map();
   const v = new THREE.Vector3();
@@ -458,14 +463,38 @@ function splitTiles(sc) {
   const g = new THREE.Group();
   tiles = [];
   for (const b of buckets.values()) {
+    const n = b.p.length / 3;
+    for (let i = n - 1; i > 0; i--) {             // 点の順番を混ぜる（先頭から取れば全体から均等に間引いたことになる）
+      const j = Math.floor(Math.random() * (i + 1));
+      for (let k = 0; k < 3; k++) {             // 配列を作らずに入れ替える（93 万点で遅くならないように）
+        const a = i * 3 + k, c = j * 3 + k;
+        let t = b.p[a]; b.p[a] = b.p[c]; b.p[c] = t;
+        if (b.c.length) { t = b.c[a]; b.c[a] = b.c[c]; b.c[c] = t; }
+      }
+    }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
     if (b.c.length) geo.setAttribute('color', new THREE.Uint8BufferAttribute(b.c.map(x => Math.round(x * 255)), 3, true));
     const obj = new THREE.Points(geo, mat);
     g.add(obj);
-    tiles.push({ obj, x0: b.ix * TILE, x1: (b.ix + 1) * TILE, z0: b.iz * TILE, z1: (b.iz + 1) * TILE });
+    tiles.push({ obj, n, x0: b.ix * TILE, x1: (b.ix + 1) * TILE, z0: b.iz * TILE, z1: (b.iz + 1) * TILE });
   }
+  // 点の間隔の目安＝1 / √(点の数 ÷ 点のある升（0.5 m 角）の面積)。2 cm〜50 cm に収める
+  let nPts = 0;
+  for (const t of tiles) nPts += t.n;
+  if (cloudGrid.size) cloudStep = Math.min(0.5, Math.max(0.02, 1 / Math.sqrt(nPts / (cloudGrid.size * CELL * CELL))));
   return g;
+}
+// 縮尺に合わせて各升の描く点の数を決める（apply のたびに呼ぶ。数が変わったときだけ書き換える）
+function thinCloud() {
+  if (!tiles.length) return;
+  let k = 1;
+  try { k = s; } catch (e) { /* 点群のほうが置き方の値（s）より先に読み終わったとき */ }
+  const f = Math.min(1, (cloudStep * k / CLOUD_GAP) ** 2);
+  for (const t of tiles) {
+    const c = Math.max(1, Math.ceil(t.n * f));
+    if (t.obj.geometry.drawRange.count !== c) t.obj.geometry.setDrawRange(0, c);
+  }
 }
 // いる所（カメラの真下）から範囲の外の升を隠す。升の四角までの水平の距離で見る（縮尺 s も掛ける）
 const camLocal = new THREE.Vector3();
@@ -714,6 +743,7 @@ function apply() {
   tgtMark.position.copy(P[target]); tgtMark.position.y += 0.006;
   tgtMark.visible = aligning;
   paintFlags();
+  thinCloud();
   showUI();
 }
 // 固定中に（アンカーで）動いた行列から値を読み直す
@@ -1214,3 +1244,4 @@ renderer.setAnimationLoop((time, frame) => {
   }
   renderer.render(scene, camera);
 });
+
