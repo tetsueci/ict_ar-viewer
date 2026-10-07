@@ -818,7 +818,7 @@ function showUI() {
   $('scaleTgl').textContent = allowScale ? '拡大：あり' : '拡大：なし';
 
   let st;
-  if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>十字を当てた場所の座標が出ます。直すときは「位置合わせ」';
+  if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>直すときは「位置合わせ」';
   else if (!lastHit) st = '<span class="mode adj">位置合わせ</span><b>地面を探しています…</b><br>スマホをゆっくり左右に動かしてください';
   else if (!placed && PT[pivot].start) st = `<span class="mode adj">位置合わせ</span><b>十字を足もと（地図で選んだ始める場所）に当てて「◎ ${a} をここへ」</b><br>点群が大まかな位置に出る`;
   else if (!placed) st = `<span class="mode adj">位置合わせ</span><b>十字を ${a} の印に合わせて「◎ ${a} をここへ」</b>`;
@@ -1097,7 +1097,7 @@ renderer.setAnimationLoop((time, frame) => {
     if (hits.length) {
       reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
       reticle.matrixWorldNeedsUpdate = true;
-      reticle.visible = true;
+      reticle.visible = aligning;                // 固定中は十字（ターゲットマーク）を出さない
       lastHit = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
     } else {
       reticle.visible = false;
@@ -1122,7 +1122,7 @@ renderer.setAnimationLoop((time, frame) => {
     }
 
     // 十字の位置を現場座標で
-    if (placed && lastHit) {
+    if (placed && lastHit && aligning) {          // 固定中は十字を出さないので座標も出さない
       const loc = lastHit.clone().applyMatrix4(tmpM.copy(group.matrix).invert());
       const c = glToSite(loc);
       const n = nearest(-1);
