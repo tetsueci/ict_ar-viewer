@@ -140,6 +140,7 @@ document.body.insertAdjacentHTML('afterbegin', `
     <div class="row adjonly cloudonly">
       <button id="pick" disabled>点群の点を拾う</button>
       <button id="cloud1">点群：小</button>
+      <button id="range1">範囲 50m</button>
     </div>
     <!-- 微調整（回転・高さ・拡大）は config.json の "finetune": true のときだけ出す -->
     <div class="row adjonly finetune">
@@ -166,6 +167,7 @@ document.body.insertAdjacentHTML('afterbegin', `
       <button id="adjust" class="big orange">位置合わせ</button>
       <button id="toggle">半透明</button>
       <button id="cloud2" class="cloudonly">点群：小</button>
+      <button id="range2" class="cloudonly">範囲 50m</button>
       <button id="exit2">終わる</button>
     </div>
   </div>
@@ -392,10 +394,12 @@ if (cfg.pointcloud) {
         c.push(v.x, v.y, v.z);
       }
     });
-    cloud = sc; group.add(cloud);
+    cloud = splitTiles(sc); group.add(cloud);
     $('support').textContent = '';
     if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
-    picker?.addCloud(sc);
+    picker?.addCloud(cloud);
+    sc.traverse(o => o.geometry?.dispose());     // 元の 1 本は使わない（升に分けた写しを使う）
+    paintRange();
   }).catch(() => { $('support').textContent = '点群を読めませんでした（' + cfg.pointcloud + '）'; });
 }
 // 点群の外接箱の真ん中にいちばん近い地面の点（真ん中の 3 m 以内でいちばん低い点。無ければ箱の底）
@@ -426,6 +430,57 @@ function cloudDist(c) {
     }
   }
   return best < 1 ? best : null;
+}
+// ---------- 点群を升（TILE m 角）に分け、いる所の近くの升だけ描く ----------
+// 全部を描くと点の数が多く、スマホが熱くなって落ちた（2026-10-07〜08）。描く点の数を「見える範囲」で絞る。
+// 範囲は 25 / 50 / 100 m / 全部（ボタンで切り替え。config.json の "cloudRange" で初めの値、既定 50）
+const TILE = 20;
+const RANGES = [25, 50, 100, 0];                // 0＝全部
+let cloudRange = RANGES.includes(cfg.cloudRange) ? cfg.cloudRange : 50;
+let tiles = [];                                 // { obj, x0, x1, z0, z1 }（group の中の座標）
+function splitTiles(sc) {
+  const buckets = new Map();
+  const v = new THREE.Vector3();
+  let mat = null;
+  sc.traverse(o => {
+    if (!o.isPoints) return;
+    mat = o.material;
+    const a = o.geometry.getAttribute('position'), c = o.geometry.getAttribute('color');
+    for (let i = 0; i < a.count; i++) {
+      v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
+      const k = (Math.floor(v.x / TILE) + 32768) * 65536 + (Math.floor(v.z / TILE) + 32768);
+      let b = buckets.get(k);
+      if (!b) buckets.set(k, b = { p: [], c: [], ix: Math.floor(v.x / TILE), iz: Math.floor(v.z / TILE) });
+      b.p.push(v.x, v.y, v.z);
+      if (c) b.c.push(c.getX(i), c.getY(i), c.getZ(i));
+    }
+  });
+  const g = new THREE.Group();
+  tiles = [];
+  for (const b of buckets.values()) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
+    if (b.c.length) geo.setAttribute('color', new THREE.Uint8BufferAttribute(b.c.map(x => Math.round(x * 255)), 3, true));
+    const obj = new THREE.Points(geo, mat);
+    g.add(obj);
+    tiles.push({ obj, x0: b.ix * TILE, x1: (b.ix + 1) * TILE, z0: b.iz * TILE, z1: (b.iz + 1) * TILE });
+  }
+  return g;
+}
+// いる所（カメラの真下）から範囲の外の升を隠す。升の四角までの水平の距離で見る（縮尺 s も掛ける）
+const camLocal = new THREE.Vector3();
+function updateTiles(cam) {
+  if (!tiles.length || !placed) return;
+  camLocal.setFromMatrixPosition(cam.matrixWorld).applyMatrix4(tmpM.copy(group.matrix).invert());
+  for (const t of tiles) {
+    if (!cloudRange) { t.obj.visible = true; continue; }
+    const dx = Math.max(t.x0 - camLocal.x, 0, camLocal.x - t.x1), dz = Math.max(t.z0 - camLocal.z, 0, camLocal.z - t.z1);
+    t.obj.visible = Math.hypot(dx, dz) * s <= cloudRange;
+  }
+}
+function paintRange() {
+  const t = cloudRange ? `範囲 ${cloudRange}m` : '範囲 全部';
+  $('range1').textContent = $('range2').textContent = t;
 }
 function setCloudSize(k) {
   cloudSize = k;
@@ -1010,7 +1065,7 @@ function pickAt(x, y) {
   // 光線のまわりを広めに拾い、画面の上でタップした所にいちばん近く見える点を取る。
   // （光線にいちばん近い点で選ぶと、地面を斜めに見たとき光線が手前で地面をかすめ、手前の点を取ってしまう）
   ray.params.Points.threshold = 3;
-  const hits = ray.intersectObject(cloud, true);
+  const hits = ray.intersectObjects(cloud.children.filter(o => o.visible), false);   // 隠れている升は拾わない
   const inv = new THREE.Matrix4().copy(cam.matrixWorld).invert();
   const cand = hits.map(h => {
     const wp = new THREE.Vector3().fromBufferAttribute(h.object.geometry.getAttribute('position'), h.index).applyMatrix4(h.object.matrixWorld);
@@ -1044,6 +1099,10 @@ function pickAt(x, y) {
 }
 $('pick').onclick = () => setPicking(!picking);
 $('cloud1').onclick = $('cloud2').onclick = () => setCloudSize((cloudSize + 1) % 3);
+$('range1').onclick = $('range2').onclick = () => {
+  cloudRange = RANGES[(RANGES.indexOf(cloudRange) + 1) % RANGES.length];
+  paintRange(); tileAt = 0;                      // 次のフレームですぐ描き直す
+};
 gest.addEventListener('pointerup', up);
 gest.addEventListener('pointercancel', up);
 
@@ -1103,9 +1162,10 @@ if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(
 
 // ---------- 毎フレーム ----------
 const tmpM = new THREE.Matrix4();
-let liveAt = 0;
+let liveAt = 0, tileAt = 0;
 renderer.setAnimationLoop((time, frame) => {
   if (frame && hitSource) {
+    if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); }
     const hits = frame.getHitTestResults(hitSource);
     const had = !!lastHit;
     if (hits.length) {
