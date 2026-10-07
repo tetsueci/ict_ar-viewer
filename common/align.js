@@ -328,6 +328,8 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
+// AR の画面の細かさを 0.8 倍に（描く画素が 4 割ほど減る）。10 分ほどで熱くなりブラウザが落ちた（2026-10-07 Android・点群のある現場）
+renderer.xr.setFramebufferScaleFactor(0.8);
 renderer.xr.setReferenceSpaceType('local');
 renderer.domElement.style.display = 'none';
 document.body.appendChild(renderer.domElement);
@@ -611,6 +613,9 @@ if (STARTPICK) {
       });
       ps.add(m);
       if (box) render();
+    },
+    release() {                                   // AR を始めたら地図の側の点群を GPU から下ろす（起動画面に戻れば描き直すときに積み直す）
+      pcloud?.traverse(o => o.geometry?.dispose());
     },
     mark() {                                      // 始める場所（白の縁取り＋黄）
       marks.clear();
@@ -1053,6 +1058,7 @@ async function startAR() {
   });
   overlay.classList.add('on');
   overlay.addEventListener('beforexrselect', e => e.preventDefault());
+  picker?.release?.();                          // 起動画面の地図の点群（2 つ目の写し）を下ろして、メモリと熱を減らす
   renderer.domElement.style.display = 'block';
   await renderer.xr.setSession(session);
   refSpace = renderer.xr.getReferenceSpace();
@@ -1097,6 +1103,7 @@ if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(
 
 // ---------- 毎フレーム ----------
 const tmpM = new THREE.Matrix4();
+let liveAt = 0;
 renderer.setAnimationLoop((time, frame) => {
   if (frame && hitSource) {
     const hits = frame.getHitTestResults(hitSource);
@@ -1128,8 +1135,10 @@ renderer.setAnimationLoop((time, frame) => {
       if (ap) { group.matrix.multiplyMatrices(tmpM.fromArray(ap.transform.matrix), anchorOffset); group.matrixWorldNeedsUpdate = true; }
     }
 
-    // 十字の位置を現場座標で
+    // 十字の位置を現場座標で（文字の書き換えは 0.25 秒ごと。毎フレーム書き換えると重く、熱の元になる）
     if (placed && lastHit && aligning) {          // 固定中は十字を出さないので座標も出さない
+      if (time - liveAt < 250) { renderer.render(scene, camera); return; }
+      liveAt = time;
       const loc = lastHit.clone().applyMatrix4(tmpM.copy(group.matrix).invert());
       const c = glToSite(loc);
       const n = nearest(-1);
@@ -1141,7 +1150,7 @@ renderer.setAnimationLoop((time, frame) => {
         + (n && n.d < 5 ? `　近い点 ${PT[n.i].name} まで ${(n.d * 100).toFixed(0)} cm` : '')
         + (cd === undefined ? '' : cd === null ? '　点群まで 1 m 以上' : `　点群まで ${(cd * s * 100).toFixed(0)} cm`)
         + (far ? '（ずれが大きい：近くの点で合わせ直す目安）' : '');
-    } else $('live').textContent = '';
+    } else if ($('live').textContent) $('live').textContent = '';   // 空なら書き換えない
   }
   renderer.render(scene, camera);
 });
