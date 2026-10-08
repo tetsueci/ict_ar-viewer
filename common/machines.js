@@ -167,6 +167,8 @@ export async function initMachines(api) {
   function setOpen(v) {
     open = v;
     wrap.classList.toggle('open', open);
+    // 重機を操作しているあいだは、位置合わせ・固定中のほかのボタンを隠す（「重機 ▼」で閉じると戻る）
+    document.getElementById('overlay').classList.toggle('mcmode', open);
     $('mctgl').textContent = open ? '重機 ▼' : '重機 ▲';
   }
   $('mctgl').onclick = () => setOpen(!open);

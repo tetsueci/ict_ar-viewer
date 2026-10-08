@@ -107,6 +107,8 @@ button.armed { background: var(--warn) !important; color: #fff !important; borde
 #mcpanel { display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 #mcpanel .mcbody { display: none; }
 #mcpanel.open .mcbody { display: flex; }
+/* 重機の操作中は、ほかの行（位置合わせ・固定中のボタン）を隠す。#mcpanel の中の行は .panel の直下ではないので残る */
+#overlay.mcmode .panel > .row { display: none !important; }
 #mcpanel select { font: inherit; font-size: 13px; padding: 8px 6px; border: 0; border-radius: 10px; background: rgba(255,255,255,.92); color: #14171c; }
 #mcpanel input[type=range] { width: 46vw; }
 #mcpanel .mcnum { align-self: center; min-width: 4.5em; color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,.8); font-variant-numeric: tabular-nums; }
