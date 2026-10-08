@@ -103,3 +103,11 @@ body:not(.finetune) #overlay .finetune { display: none !important; }
 /* 表の「消す」（拾った点） */
 button.armed { background: var(--warn) !important; color: #fff !important; border-color: var(--warn) !important; font-weight: 700; }
 .qdel { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--warn); font: inherit; font-size: 12px; padding: 3px 8px; }
+/* 重機の操作盤（machines.js。config.json に "machines" がある現場だけ） */
+#mcpanel { display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
+#mcpanel .mcbody { display: none; }
+#mcpanel.open .mcbody { display: flex; }
+#mcpanel select { font: inherit; font-size: 13px; padding: 8px 6px; border: 0; border-radius: 10px; background: rgba(255,255,255,.92); color: #14171c; }
+#mcpanel input[type=range] { width: 46vw; }
+#mcpanel .mcnum { align-self: center; min-width: 4.5em; color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,.8); font-variant-numeric: tabular-nums; }
+#mcpanel .mcread { color: #ffe0b2; font-size: 12.5px; text-shadow: 0 1px 3px rgba(0,0,0,.8); text-align: center; max-width: 92vw; white-space: normal; }

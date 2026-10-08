@@ -1192,10 +1192,18 @@ if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(
 
 // ---------- 毎フレーム ----------
 const tmpM = new THREE.Matrix4();
+// ---------- 重機（config.json に "machines" がある現場だけ。中身は machines.js） ----------
+let mc = null;
+if (cfg.machines) {
+  import(new URL('machines.js', import.meta.url).href + new URL(import.meta.url).search)
+    .then(m => m.initMachines({ THREE, loader, group, siteToGl, cfg, getHit: () => lastHit }))
+    .then(r => { mc = r; })
+    .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
+}
 let liveAt = 0, tileAt = 0;
 renderer.setAnimationLoop((time, frame) => {
   if (frame && hitSource) {
-    if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); }
+    if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); mc?.frame(!!lastHit, aligning, placed); }
     const hits = frame.getHitTestResults(hitSource);
     const had = !!lastHit;
     if (hits.length) {
