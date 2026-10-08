@@ -283,6 +283,7 @@ export async function initMachines(api) {
   // スティックかボタンを使うと「コントローラー操作」になり、画面のボタンと十字を隠す。画面をタップすると戻る。
   // 説明は SELECT（Back・Share・View）か START（Options・Menu）を押しているあいだだけ出す
   const DEAD = 0.15;                              // スティックの遊び
+  const TRAVEL = 2.1;                             // 前進・後退の速さ（m/秒）。1.4（時速 5 km）の 1.5 倍（2026-10-09 AXIO さん指示）
   const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, SELECT: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
   // 種類ごとの割り当て：[キー, 入力, 速さ（1 秒あたり。スティックを倒しきったとき）]
   // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'BA'（B ボタン +1・A ボタン −1）
@@ -364,13 +365,13 @@ export async function initMachines(api) {
     // 車体の向き（十字キー ←→・1 秒に 20°）
     const dh = (btn[BTN.LEFT] ? 1 : 0) - (btn[BTN.RIGHT] ? 1 : 0);
     if (dh && dt) { u.heading = ((u.heading + dh * 20 * dt + 540) % 360) - 180; moved = true; }
-    // 走る（十字キー ↑ 前・↓ 後ろ。1 秒に 1.4 m＝時速 5 km ほど）。前＝旋回 0° のときブームが伸びている向き（CAD の +X）を
+    // 走る（十字キー ↑ 前・↓ 後ろ。1 秒に TRAVEL m）。前＝旋回 0° のときブームが伸びている向き（CAD の +X）を
     // 車体の向きで回したもの。走ったら 0.25 秒ごとに真下のモデルの面の高さへ合わせる（坂でも浮かない・潜らない）
     const dv = (btn[BTN.UP] ? 1 : 0) - (btn[BTN.DOWN] ? 1 : 0);
     if (dv && dt && u.root.visible) {
       const h = u.heading * Math.PI / 180;
-      u.root.position.x += Math.cos(h) * dv * 1.4 * dt;
-      u.root.position.z -= Math.sin(h) * dv * 1.4 * dt;
+      u.root.position.x += Math.cos(h) * dv * TRAVEL * dt;
+      u.root.position.z -= Math.sin(h) * dv * TRAVEL * dt;
       if (time - snapAt > 250) { snapAt = time; u.snap = 'near'; snapPending(); }
     }
     for (const [key, inp, rate] of MAP[u.M.type] || []) {
