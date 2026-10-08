@@ -337,6 +337,8 @@ def main():
     ap.add_argument("--points-note", default="", help="--points の点の説明（config.json の note に入る）")
     ap.add_argument("--origin", help='座標から引く原点 "X,Y,Z" か auto（100 m 単位に丸めた中心）。'
                                      '平面直角座標のままだと float32 で mm が崩れるので、大きい座標なら付ける')
+    ap.add_argument("--no-plan", action="store_true",
+                    help="平面図（plan.png）を作らず、config.json の plan も外す（起動画面の地図で足りる現場）")
     ap.add_argument("--start", help="基準点を前もって決めないとき pick（AR の前に点群の上で選ぶ。点群が要る）")
     a = ap.parse_args()
 
@@ -396,7 +398,6 @@ def main():
         "title": a.title,
         "version": __import__("time").strftime("%Y%m%d%H%M%S"),   # 画像とモデルの読み直し用（ブラウザの覚えた古いものを使わせない）
         "model": "model.glb",
-        "plan": "plan.png",
         "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
         "points": pts[:2],
     })
@@ -406,10 +407,15 @@ def main():
         cfg.pop("origin", None)
     if a.start:
         cfg["start"] = a.start
+    if a.no_plan:
+        cfg.pop("plan", None)
+    else:
+        cfg["plan"] = "plan.png"
     with open(cpath, "w", encoding="utf-8", newline="\n") as fo:
         json.dump(cfg, fo, ensure_ascii=False, indent=2)
         fo.write("\n")
-    write_plan(faces, pts[:2], os.path.join(a.out, "plan.png"), a.title)
+    if not a.no_plan:
+        write_plan(faces, pts[:2], os.path.join(a.out, "plan.png"), a.title)
 
     print(f"model.glb {n / 1e6:.2f} MB")
     for lay, tris in sorted(faces.items()):
