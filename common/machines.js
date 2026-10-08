@@ -14,7 +14,7 @@
 const KENKI = 'https://tetsueci.github.io/ict_kenki-ar/';
 
 export async function initMachines(api) {
-  const { THREE, loader, group, siteToGl, cfg, getCamera, getTargets, setPlacing, setPadMode } = api;
+  const { THREE, loader, group, siteToGl, cfg, getCamera, getTargets, setPlacing, setPadMode, scene, setBoarded } = api;
   const base = cfg.kenkiBase || KENKI;
   const list = (Array.isArray(cfg.machines) ? cfg.machines : []).filter(m => m && m.id);
   if (!list.length) return;
@@ -285,15 +285,15 @@ export async function initMachines(api) {
   const DEAD = 0.15;                              // スティックの遊び
   const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, SELECT: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
   // 種類ごとの割り当て：[キー, 入力, 速さ（1 秒あたり。スティックを倒しきったとき）]
-  // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'YA'（Y ボタン +1・A ボタン −1）
+  // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'BA'（B ボタン +1・A ボタン −1）
   const MAP = {
-    backhoe: [['angleCabin', '-LX', 25], ['angleArm', '-LY', 25], ['angleBoom', 'RY', 18], ['angleBucket', 'RX', 35]],
-    rough_terrain_crane: [['angleCabin', '-LX', 20], ['lengthBoom', '-LY', 3], ['angleBoom', 'RY', 10], ['lengthWire', 'T', 3], ['outrigger', 'YA', 1]],
-    crawler_crane: [['angleCabin', '-LX', 15], ['angleBoom', 'RY', 8], ['lengthWire', 'T', 3]],
+    backhoe: [['angleCabin', '-LX', 50], ['angleArm', '-LY', 45], ['angleBoom', 'RY', 35], ['angleBucket', 'RX', 70]],
+    rough_terrain_crane: [['angleCabin', '-LX', 40], ['lengthBoom', '-LY', 6], ['angleBoom', 'RY', 20], ['lengthWire', 'T', 6], ['outrigger', 'BA', 1]],
+    crawler_crane: [['angleCabin', '-LX', 30], ['angleBoom', 'RY', 16], ['lengthWire', 'T', 6]],
   };
   const HELP = {
     backhoe: '左スティック　←→ 旋回　↑ アームを伸ばす　↓ アームを引く\n右スティック　↑ ブーム下げ　↓ ブーム上げ　← バケット抱え込み　→ バケット開く',
-    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　Y アウトリガを張る　A 縮める',
+    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　B アウトリガを張る　A 縮める',
     crawler_crane: '左スティック　←→ 旋回\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ',
   };
   const help = document.createElement('div');
@@ -314,7 +314,7 @@ export async function initMachines(api) {
     if (!on) help.hidden = true;
     if (on && placing) setPlace(false);
   }
-  catcher.addEventListener('pointerdown', e => { e.preventDefault(); setPad(false); });
+  catcher.addEventListener('pointerdown', e => { e.preventDefault(); boardOff(); setPad(false); });
   function axis(g, name) {
     const neg = name.startsWith('-'), n = neg ? name.slice(1) : name;
     let v = 0;
@@ -324,14 +324,14 @@ export async function initMachines(api) {
     else if (n === 'RY') v = g.axes[3] || 0;
     else if (n === 'T') v = (g.buttons[BTN.RT]?.value || 0) - (g.buttons[BTN.LT]?.value || 0);
     else if (n === 'DPY') v = (g.buttons[BTN.DOWN]?.pressed ? 1 : 0) - (g.buttons[BTN.UP]?.pressed ? 1 : 0);
-    else if (n === 'YA') v = (g.buttons[BTN.Y]?.pressed ? 1 : 0) - (g.buttons[BTN.A]?.pressed ? 1 : 0);
-    if (n !== 'T' && n !== 'DPY' && n !== 'YA' && Math.abs(v) < DEAD) v = 0;
+    else if (n === 'BA') v = (g.buttons[BTN.B]?.pressed ? 1 : 0) - (g.buttons[BTN.A]?.pressed ? 1 : 0);
+    if (n !== 'T' && n !== 'DPY' && n !== 'BA' && Math.abs(v) < DEAD) v = 0;
     if (n === 'T' && Math.abs(v) < 0.05) v = 0;
     return neg ? -v : v;
   }
   function helpText(u) {
     return `【コントローラー】${u.name}\n` + (HELP[u.M.type] || '')
-      + '\n十字キー ↑↓ 向いている方へ走る（前・後ろ）　←→ 車体の向き\nLB／RB 動かす重機を切り替え（ほかの台はそのまま）\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
+      + '\n十字キー ↑↓ 向いている方へ走る（前・後ろ）　←→ 車体の向き\nLB／RB 動かす重機を切り替え（ほかの台はそのまま）\nX 運転席に乗る・降りる　Y いまのスマホの向きを正面にする（乗っているとき）\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
   }
   function tick(time) {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
@@ -348,11 +348,14 @@ export async function initMachines(api) {
     if (edge(BTN.LB) || edge(BTN.RB)) {
       cur = (cur + (edge(BTN.RB) ? 1 : units.length - 1)) % units.length;
       fillUnits(); fillControls();
+      if (board) { if (unit().root.visible) boardOn(unit()); else boardOff(); }
       toast.textContent = `動かす重機：${unit().name}${unit().root.visible ? '' : '（まだ置いていない）'}`;
       toast.hidden = false; toastUntil = time + 1800;
     }
     if (!toast.hidden && time > toastUntil) toast.hidden = true;
     const u = unit();
+    if (edge(BTN.X)) { if (board) boardOff(); else if (u.root.visible) boardOn(u); else { toast.textContent = 'まず「重機を置く」で置いてください'; toast.hidden = false; toastUntil = time + 1800; } }
+    if (edge(BTN.Y) && board) board.recenter = true;
     // 説明：SELECT か START を押しているあいだだけ
     const showHelp = btn[BTN.SELECT] || btn[BTN.START];
     if (help.hidden === showHelp) help.hidden = !showHelp;
@@ -384,6 +387,90 @@ export async function initMachines(api) {
     prevBtn = btn;
   }
 
+  // ---------- 運転席に乗る（2026-10-09） ----------
+  // カメラの映像を空で隠し（CG の景色）、運転席の目がスマホの所に来るよう世界（group）を毎フレーム動かす。縮尺は実寸。
+  // 旋回・走行すると視点も一緒に動く。スマホを動かすと、車体は止まったまま見回せる。Y で「いまのスマホの向き」を正面にする。
+  // ★目の位置とキャビンの透け方は仮（キャビンの外接箱の中央・床から 1.2 m 上／キャビンを 15% だけ見せる）。
+  //   正は ict_kenki-ar の machines/*.json に "eye"（キャビンの部品の座標・mm）と "cabinOpacity" を入れてもらう（入れば自動でそちらを使う）
+  let board = null;                               // { u, p0: スマホの位置, yaw0: 正面にした向き, recenter }
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    uniforms: {},
+    vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'varying vec3 vP; void main(){ float t = clamp(vP.y * 1.6 + 0.3, 0.0, 1.0); gl_FragColor = vec4(mix(vec3(0.78,0.80,0.78), vec3(0.42,0.62,0.86), t), 1.0); }',
+  }));
+  sky.renderOrder = -100; sky.frustumCulled = false; sky.visible = false;
+  scene.add(sky);
+  // 目の位置（キャビンの部品の座標・mm）。kenki の eye があればそれ、無ければキャビンの外接箱の中央・底から 1.2 m 上
+  function eyeOf(u) {
+    if (u.eye) return u.eye;
+    const cab = u.nodes.cabin;
+    if (Array.isArray(u.M.eye)) u.eye = new THREE.Vector3(...u.M.eye);
+    else if (cab) {
+      const b = new THREE.Box3();
+      cab.children[0].updateMatrixWorld(true);
+      cab.children[0].traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); b.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrix)); } });
+      const c = b.getCenter(new THREE.Vector3());
+      u.eye = new THREE.Vector3(c.x, c.y, b.min.z + 1200);
+    } else u.eye = new THREE.Vector3(0, 0, 2500);
+    return u.eye;
+  }
+  // キャビンを透かす（乗っている台だけ。降りたら戻す）
+  function cabinSee(u, on) {
+    const cab = u.nodes.cabin;
+    if (!cab) return;
+    const op = Number.isFinite(u.M.cabinOpacity) ? u.M.cabinOpacity : 0.15;
+    cab.traverse(o => {
+      if (!o.isMesh) return;
+      if (on) { o.userData.mat0 = o.material; o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = op; o.material.depthWrite = false; }
+      else if (o.userData.mat0) { o.material = o.userData.mat0; delete o.userData.mat0; }
+    });
+  }
+  function boardOn(u) {
+    if (board) cabinSee(board.u, false);
+    board = { u, p0: null, yaw0: 0, recenter: true };
+    cabinSee(u, true);
+    sky.visible = true;
+    setBoarded(true);
+  }
+  function boardOff() {
+    if (!board) return;
+    cabinSee(board.u, false);
+    board = null;
+    sky.visible = false;
+    setBoarded(false);
+  }
+  const mA = new THREE.Matrix4(), vE = new THREE.Vector3(), vF = new THREE.Vector3(), vO = new THREE.Vector3(), qV = new THREE.Quaternion();
+  // align.js が毎フレーム呼ぶ（乗っているあいだ）
+  function boardFrame(frame, refSpace) {
+    const vp = frame.getViewerPose(refSpace);
+    if (!vp || !board) return;
+    const p = vp.transform.position, o = vp.transform.orientation;
+    qV.set(o.x, o.y, o.z, o.w);
+    if (board.recenter || !board.p0) {           // 乗ったとき・Y を押したとき：いまのスマホの位置と向きを運転席の正面にする
+      board.p0 = new THREE.Vector3(p.x, p.y, p.z);
+      const f = new THREE.Vector3(0, 0, -1).applyQuaternion(qV);
+      board.yaw0 = Math.atan2(-f.z, f.x);        // 水平の向き（x 軸から左回り）
+      board.recenter = false;
+    }
+    const u = board.u;
+    // キャビンの部品 → body（CAD）→ root（置き場所と車体の向き）＝ group の中の行列
+    u.root.updateMatrix();
+    const cab = u.nodes.cabin;
+    const toGroup = new THREE.Matrix4().multiplyMatrices(u.root.matrix, u.root.children[0].matrix);
+    if (cab) toGroup.multiply(cab.matrix);
+    vE.copy(eyeOf(u)).applyMatrix4(toGroup);                        // 目（group の中）
+    vO.set(0, 0, 0).applyMatrix4(toGroup);
+    vF.set(1000, 0, 0).applyMatrix4(toGroup).sub(vO);               // キャビンの正面（CAD の +X）
+    const yawF = Math.atan2(-vF.z, vF.x);
+    // 世界の回転：キャビンの正面がスマホの正面（yaw0）を向くように。縮尺は 1
+    mA.makeRotationY(board.yaw0 - yawF);
+    const t = vE.clone().applyMatrix4(mA);
+    group.matrix.copy(mA).setPosition(board.p0.x - t.x, board.p0.y - t.y, board.p0.z - t.z);
+    group.matrixWorldNeedsUpdate = true;
+    sky.position.set(p.x, p.y, p.z);
+  }
+
   // align.js が呼ぶ：0.5 秒ごと（現場モデルを置いたあとだけ「重機を置く」を押せる）と、置くあいだのタップ
   return {
     frame(hasHit, aligning, placed) {
@@ -394,5 +481,6 @@ export async function initMachines(api) {
     },
     tap(x, y) { if (placing) placeAt(x, y); },
     tick,
+    board: boardFrame,
   };
 }

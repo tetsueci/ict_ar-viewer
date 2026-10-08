@@ -526,7 +526,7 @@ function splitTiles(sc) {
 function thinCloud() {
   if (!tiles.length) return;
   let k = 1;
-  try { k = s; } catch (e) { /* 点群のほうが置き方の値（s）より先に読み終わったとき */ }
+  try { k = mcBoarded ? 1 : s; } catch (e) { /* 点群のほうが置き方の値（s）より先に読み終わったとき */ }
   const f = Math.min(1, (cloudStep * k / CLOUD_GAP) ** 2);
   for (const t of tiles) {
     const c = Math.max(1, Math.ceil(t.n * f));
@@ -541,7 +541,7 @@ function updateTiles(cam) {
   for (const t of tiles) {
     if (!cloudRange) { t.obj.visible = true; continue; }
     const dx = Math.max(t.x0 - camLocal.x, 0, camLocal.x - t.x1), dz = Math.max(t.z0 - camLocal.z, 0, camLocal.z - t.z1);
-    t.obj.visible = Math.hypot(dx, dz) * s <= cloudRange;
+    t.obj.visible = Math.hypot(dx, dz) * (mcBoarded ? 1 : s) <= cloudRange;   // 重機に乗っているあいだは実寸
   }
 }
 function paintRange() {
@@ -1234,13 +1234,16 @@ const tmpM = new THREE.Matrix4();
 // ---------- 重機（config.json に "machines" がある現場だけ。中身は machines.js） ----------
 let mc = null, mcPlacing = false;                // 重機を置くあいだ（タップを重機へ渡す・指で回さない）
 let padMode = false;                              // コントローラーで重機を動かしているあいだ（ボタンと十字を隠す）
+let mcBoarded = false;                            // 重機に乗っているあいだ（世界を運転席の目へ動かす・実寸）
 if (cfg.machines) {
   import(new URL('machines.js', import.meta.url).href + new URL(import.meta.url).search)
     .then(m => m.initMachines({ THREE, loader, group, siteToGl, cfg,
       getCamera: () => (renderer.xr.isPresenting ? renderer.xr.getCamera() : camera),
       getTargets: () => ({ model: modelRoot, cloud }),
       setPlacing: on => { mcPlacing = on; $('overlay').classList.toggle('mcplace', on); },
-      setPadMode: on => { padMode = on; $('overlay').classList.toggle('padmode', on); } }))
+      setPadMode: on => { padMode = on; $('overlay').classList.toggle('padmode', on); },
+      scene,
+      setBoarded: on => { mcBoarded = on; thinCloud(); if (!on) apply(); } }))
     .then(r => { mc = r; })
     .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
 }
@@ -1277,9 +1280,11 @@ renderer.setAnimationLoop((time, frame) => {
       const ap = frame.getPose(anchor.anchorSpace, refSpace);
       if (ap) { group.matrix.multiplyMatrices(tmpM.fromArray(ap.transform.matrix), anchorOffset); group.matrixWorldNeedsUpdate = true; }
     }
+    // 重機に乗っているあいだは、運転席の目がスマホの所に来るよう世界（group）を動かす（位置合わせ・アンカーより後に上書き）
+    if (mcBoarded) mc?.board(frame, refSpace);
 
     // 十字の位置を現場座標で（文字の書き換えは 0.25 秒ごと。毎フレーム書き換えると重く、熱の元になる）
-    if (placed && lastHit && aligning) {          // 固定中は十字を出さないので座標も出さない
+    if (placed && lastHit && aligning && !mcBoarded) {   // 固定中・乗っているあいだは十字を出さないので座標も出さない
       if (time - liveAt < 250) { renderer.render(scene, camera); return; }
       liveAt = time;
       const loc = lastHit.clone().applyMatrix4(tmpM.copy(group.matrix).invert());
