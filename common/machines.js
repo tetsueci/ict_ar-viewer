@@ -14,7 +14,7 @@
 const KENKI = 'https://tetsueci.github.io/ict_kenki-ar/';
 
 export async function initMachines(api) {
-  const { THREE, loader, group, siteToGl, cfg, getCamera, getTargets, setPlacing } = api;
+  const { THREE, loader, group, siteToGl, cfg, getCamera, getTargets, setPlacing, setPadMode } = api;
   const base = cfg.kenkiBase || KENKI;
   const list = (Array.isArray(cfg.machines) ? cfg.machines : []).filter(m => m && m.id);
   if (!list.length) return;
@@ -276,6 +276,97 @@ export async function initMachines(api) {
   $('mctgl').onclick = () => setOpen(!open);
   fillUnits(); fillControls(); setOpen(false);
 
+  // ---------- ゲームコントローラーで動かす（2026-10-08） ----------
+  // 動かすのは重機の一覧で選んでいる台。バックホウは実機の ISO 方式：
+  //   左スティック 左右＝旋回・前後＝アーム（前で伸ばす）／右スティック 前後＝ブーム（前で下げる）・左右＝バケット（左で抱え込む）
+  // スティックかボタンを使うと「コントローラー操作」になり、画面のボタンと十字を隠す。画面をタップすると戻る。
+  // 説明は SELECT（Back・Share・View）か START（Options・Menu）を押しているあいだだけ出す
+  const DEAD = 0.15;                              // スティックの遊び
+  const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, SELECT: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
+  // 種類ごとの割り当て：[キー, 入力, 速さ（1 秒あたり。スティックを倒しきったとき）]
+  // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'DPY'（十字キー上 −1・下 +1）
+  const MAP = {
+    backhoe: [['angleCabin', '-LX', 25], ['angleArm', '-LY', 25], ['angleBoom', 'RY', 18], ['angleBucket', 'RX', 35]],
+    rough_terrain_crane: [['angleCabin', '-LX', 20], ['lengthBoom', '-LY', 3], ['angleBoom', 'RY', 10], ['lengthWire', 'T', 3], ['outrigger', '-DPY', 1]],
+    crawler_crane: [['angleCabin', '-LX', 15], ['angleBoom', 'RY', 8], ['lengthWire', 'T', 3]],
+  };
+  const HELP = {
+    backhoe: '左スティック　←→ 旋回　↑ アームを伸ばす　↓ アームを引く\n右スティック　↑ ブーム下げ　↓ ブーム上げ　← バケット抱え込み　→ バケット開く',
+    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　十字キー ↑↓ アウトリガ',
+    crawler_crane: '左スティック　←→ 旋回\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ',
+  };
+  const help = document.createElement('div');
+  help.id = 'padhelp';
+  help.hidden = true;
+  document.getElementById('overlay').appendChild(help);
+  const catcher = document.createElement('div');   // コントローラー操作中に画面をタップしたら、ボタンの画面へ戻す
+  catcher.id = 'padcatch';
+  document.getElementById('overlay').appendChild(catcher);
+  let padOn = false, padT = 0, prevBtn = [];
+  function setPad(on) {
+    if (padOn === on) return;
+    padOn = on;
+    setPadMode(on);
+    if (!on) help.hidden = true;
+    if (on && placing) setPlace(false);
+  }
+  catcher.addEventListener('pointerdown', e => { e.preventDefault(); setPad(false); });
+  function axis(g, name) {
+    const neg = name.startsWith('-'), n = neg ? name.slice(1) : name;
+    let v = 0;
+    if (n === 'LX') v = g.axes[0] || 0;
+    else if (n === 'LY') v = g.axes[1] || 0;
+    else if (n === 'RX') v = g.axes[2] || 0;
+    else if (n === 'RY') v = g.axes[3] || 0;
+    else if (n === 'T') v = (g.buttons[BTN.RT]?.value || 0) - (g.buttons[BTN.LT]?.value || 0);
+    else if (n === 'DPY') v = (g.buttons[BTN.DOWN]?.pressed ? 1 : 0) - (g.buttons[BTN.UP]?.pressed ? 1 : 0);
+    if (n !== 'T' && n !== 'DPY' && Math.abs(v) < DEAD) v = 0;
+    if (n === 'T' && Math.abs(v) < 0.05) v = 0;
+    return neg ? -v : v;
+  }
+  function helpText(u) {
+    return `【コントローラー】${u.name}\n` + (HELP[u.M.type] || '')
+      + '\n十字キー ←→ 車体の向き　LB／RB 重機を切り替え\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
+  }
+  function tick(time) {
+    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+    const dt = padT ? Math.min(0.1, (time - padT) / 1000) : 0;
+    padT = time;
+    if (!pads.length || !units.length) return;
+    const g = pads[0];
+    const btn = g.buttons.map(b => !!b.pressed);
+    const edge = i => btn[i] && !prevBtn[i];
+    const used = btn.some(Boolean) || g.axes.some(a => Math.abs(a) > 0.3);
+    if (used) setPad(true);
+    if (!padOn) { prevBtn = btn; return; }
+    // 重機の切り替え（LB／RB）
+    if (edge(BTN.LB) || edge(BTN.RB)) {
+      cur = (cur + (edge(BTN.RB) ? 1 : units.length - 1)) % units.length;
+      fillUnits(); fillControls();
+    }
+    const u = unit();
+    // 説明：SELECT か START を押しているあいだだけ
+    const showHelp = btn[BTN.SELECT] || btn[BTN.START];
+    if (help.hidden === showHelp) help.hidden = !showHelp;
+    if (showHelp && help.textContent !== helpText(u)) help.textContent = helpText(u);
+    let moved = false;
+    // 車体の向き（十字キー ←→・1 秒に 20°）
+    const dh = (btn[BTN.LEFT] ? 1 : 0) - (btn[BTN.RIGHT] ? 1 : 0);
+    if (dh && dt) { u.heading = ((u.heading + dh * 20 * dt + 540) % 360) - 180; moved = true; }
+    for (const [key, inp, rate] of MAP[u.M.type] || []) {
+      const v = axis(g, inp);
+      if (!v || !dt) continue;
+      const c = u.controls.find(x => x.key === key);
+      if (!c) continue;
+      let x = u.st[key] + v * rate * dt;
+      if (key === 'angleCabin') x = ((x + 540) % 360) - 180;
+      else x = Math.min(c.max, Math.max(c.min, x));
+      if (x !== u.st[key]) { u.st[key] = x; moved = true; }
+    }
+    if (moved) { poseUnit(u); if (open) pickControl(); }
+    prevBtn = btn;
+  }
+
   // align.js が呼ぶ：0.5 秒ごと（現場モデルを置いたあとだけ「重機を置く」を押せる）と、置くあいだのタップ
   return {
     frame(hasHit, aligning, placed) {
@@ -285,5 +376,6 @@ export async function initMachines(api) {
       if (units.some(u => u.snap)) { snapPending(); showValue(); }
     },
     tap(x, y) { if (placing) placeAt(x, y); },
+    tick,
   };
 }

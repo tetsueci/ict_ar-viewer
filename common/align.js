@@ -1233,12 +1233,14 @@ if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(
 const tmpM = new THREE.Matrix4();
 // ---------- 重機（config.json に "machines" がある現場だけ。中身は machines.js） ----------
 let mc = null, mcPlacing = false;                // 重機を置くあいだ（タップを重機へ渡す・指で回さない）
+let padMode = false;                              // コントローラーで重機を動かしているあいだ（ボタンと十字を隠す）
 if (cfg.machines) {
   import(new URL('machines.js', import.meta.url).href + new URL(import.meta.url).search)
     .then(m => m.initMachines({ THREE, loader, group, siteToGl, cfg,
       getCamera: () => (renderer.xr.isPresenting ? renderer.xr.getCamera() : camera),
       getTargets: () => ({ model: modelRoot, cloud }),
-      setPlacing: on => { mcPlacing = on; $('overlay').classList.toggle('mcplace', on); } }))
+      setPlacing: on => { mcPlacing = on; $('overlay').classList.toggle('mcplace', on); },
+      setPadMode: on => { padMode = on; $('overlay').classList.toggle('padmode', on); } }))
     .then(r => { mc = r; })
     .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
 }
@@ -1246,12 +1248,13 @@ let liveAt = 0, tileAt = 0;
 renderer.setAnimationLoop((time, frame) => {
   if (frame && hitSource) {
     if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); mc?.frame(!!lastHit, aligning, placed); }
+    mc?.tick(time);                              // ゲームコントローラーで重機を動かす（毎フレーム）
     const hits = frame.getHitTestResults(hitSource);
     const had = !!lastHit;
     if (hits.length) {
       reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
       reticle.matrixWorldNeedsUpdate = true;
-      reticle.visible = aligning;                // 固定中は十字（ターゲットマーク）を出さない
+      reticle.visible = aligning && !padMode;    // 固定中・コントローラー操作中は十字（ターゲットマーク）を出さない
       lastHit = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
     } else {
       reticle.visible = false;
@@ -1294,6 +1297,7 @@ renderer.setAnimationLoop((time, frame) => {
   }
   renderer.render(scene, camera);
 });
+
 
 
 
