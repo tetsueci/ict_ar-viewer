@@ -115,6 +115,8 @@ button.armed { background: var(--warn) !important; color: #fff !important; borde
 #overlay.padmode .panel { display: none !important; }
 #padcatch { display: none; position: absolute; inset: 0; }
 #overlay.padmode #padcatch { display: block; pointer-events: auto; }
+#padtoast { position: absolute; left: 50%; top: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px;
+  background: rgba(0,0,0,.72); color: #fff; font-size: 14px; font-weight: 700; pointer-events: none; white-space: nowrap; }
 #padhelp { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: 94vw; padding: 10px 14px;
   border-radius: 12px; background: rgba(0,0,0,.72); color: #fff; font-size: 13px; line-height: 1.6; white-space: pre-wrap; pointer-events: none; }
 #mcpanel select { font: inherit; font-size: 13px; padding: 8px 6px; border: 0; border-radius: 10px; background: rgba(255,255,255,.92); color: #14171c; }

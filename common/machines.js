@@ -112,7 +112,8 @@ export async function initMachines(api) {
     group.updateMatrixWorld(true);
     for (const u of units) {
       if (!u.snap) continue;
-      const top = u.root.position.clone(); top.y = 10000;
+      // 走っているときは今の高さの 5 m 上から（上を通る橋やボックスの天井へ飛び乗らないように）。初めに置くときは真上から
+      const top = u.root.position.clone(); top.y = u.snap === 'near' ? u.root.position.y + 5 : 10000;
       const from = top.applyMatrix4(group.matrixWorld);
       const to = u.root.position.clone(); to.y = -10000; to.applyMatrix4(group.matrixWorld);
       down.set(from, to.clone().sub(from).normalize());
@@ -284,15 +285,15 @@ export async function initMachines(api) {
   const DEAD = 0.15;                              // スティックの遊び
   const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, SELECT: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
   // 種類ごとの割り当て：[キー, 入力, 速さ（1 秒あたり。スティックを倒しきったとき）]
-  // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'DPY'（十字キー上 −1・下 +1）
+  // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'YA'（Y ボタン +1・A ボタン −1）
   const MAP = {
     backhoe: [['angleCabin', '-LX', 25], ['angleArm', '-LY', 25], ['angleBoom', 'RY', 18], ['angleBucket', 'RX', 35]],
-    rough_terrain_crane: [['angleCabin', '-LX', 20], ['lengthBoom', '-LY', 3], ['angleBoom', 'RY', 10], ['lengthWire', 'T', 3], ['outrigger', '-DPY', 1]],
+    rough_terrain_crane: [['angleCabin', '-LX', 20], ['lengthBoom', '-LY', 3], ['angleBoom', 'RY', 10], ['lengthWire', 'T', 3], ['outrigger', 'YA', 1]],
     crawler_crane: [['angleCabin', '-LX', 15], ['angleBoom', 'RY', 8], ['lengthWire', 'T', 3]],
   };
   const HELP = {
     backhoe: '左スティック　←→ 旋回　↑ アームを伸ばす　↓ アームを引く\n右スティック　↑ ブーム下げ　↓ ブーム上げ　← バケット抱え込み　→ バケット開く',
-    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　十字キー ↑↓ アウトリガ',
+    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　Y アウトリガを張る　A 縮める',
     crawler_crane: '左スティック　←→ 旋回\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ',
   };
   const help = document.createElement('div');
@@ -302,7 +303,10 @@ export async function initMachines(api) {
   const catcher = document.createElement('div');   // コントローラー操作中に画面をタップしたら、ボタンの画面へ戻す
   catcher.id = 'padcatch';
   document.getElementById('overlay').appendChild(catcher);
-  let padOn = false, padT = 0, prevBtn = [];
+  let padOn = false, padT = 0, prevBtn = [], snapAt = 0, toastUntil = 0;
+  const toast = document.createElement('div');      // 切り替えたとき、どの台を動かしているかを少しのあいだ出す
+  toast.id = 'padtoast'; toast.hidden = true;
+  document.getElementById('overlay').appendChild(toast);
   function setPad(on) {
     if (padOn === on) return;
     padOn = on;
@@ -320,13 +324,14 @@ export async function initMachines(api) {
     else if (n === 'RY') v = g.axes[3] || 0;
     else if (n === 'T') v = (g.buttons[BTN.RT]?.value || 0) - (g.buttons[BTN.LT]?.value || 0);
     else if (n === 'DPY') v = (g.buttons[BTN.DOWN]?.pressed ? 1 : 0) - (g.buttons[BTN.UP]?.pressed ? 1 : 0);
-    if (n !== 'T' && n !== 'DPY' && Math.abs(v) < DEAD) v = 0;
+    else if (n === 'YA') v = (g.buttons[BTN.Y]?.pressed ? 1 : 0) - (g.buttons[BTN.A]?.pressed ? 1 : 0);
+    if (n !== 'T' && n !== 'DPY' && n !== 'YA' && Math.abs(v) < DEAD) v = 0;
     if (n === 'T' && Math.abs(v) < 0.05) v = 0;
     return neg ? -v : v;
   }
   function helpText(u) {
     return `【コントローラー】${u.name}\n` + (HELP[u.M.type] || '')
-      + '\n十字キー ←→ 車体の向き　LB／RB 重機を切り替え\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
+      + '\n十字キー ↑↓ 向いている方へ走る（前・後ろ）　←→ 車体の向き\nLB／RB 動かす重機を切り替え（ほかの台はそのまま）\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
   }
   function tick(time) {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
@@ -343,7 +348,10 @@ export async function initMachines(api) {
     if (edge(BTN.LB) || edge(BTN.RB)) {
       cur = (cur + (edge(BTN.RB) ? 1 : units.length - 1)) % units.length;
       fillUnits(); fillControls();
+      toast.textContent = `動かす重機：${unit().name}${unit().root.visible ? '' : '（まだ置いていない）'}`;
+      toast.hidden = false; toastUntil = time + 1800;
     }
+    if (!toast.hidden && time > toastUntil) toast.hidden = true;
     const u = unit();
     // 説明：SELECT か START を押しているあいだだけ
     const showHelp = btn[BTN.SELECT] || btn[BTN.START];
@@ -353,6 +361,15 @@ export async function initMachines(api) {
     // 車体の向き（十字キー ←→・1 秒に 20°）
     const dh = (btn[BTN.LEFT] ? 1 : 0) - (btn[BTN.RIGHT] ? 1 : 0);
     if (dh && dt) { u.heading = ((u.heading + dh * 20 * dt + 540) % 360) - 180; moved = true; }
+    // 走る（十字キー ↑ 前・↓ 後ろ。1 秒に 1.4 m＝時速 5 km ほど）。前＝旋回 0° のときブームが伸びている向き（CAD の +X）を
+    // 車体の向きで回したもの。走ったら 0.25 秒ごとに真下のモデルの面の高さへ合わせる（坂でも浮かない・潜らない）
+    const dv = (btn[BTN.UP] ? 1 : 0) - (btn[BTN.DOWN] ? 1 : 0);
+    if (dv && dt && u.root.visible) {
+      const h = u.heading * Math.PI / 180;
+      u.root.position.x += Math.cos(h) * dv * 1.4 * dt;
+      u.root.position.z -= Math.sin(h) * dv * 1.4 * dt;
+      if (time - snapAt > 250) { snapAt = time; u.snap = 'near'; snapPending(); }
+    }
     for (const [key, inp, rate] of MAP[u.M.type] || []) {
       const v = axis(g, inp);
       if (!v || !dt) continue;
