@@ -1297,8 +1297,3 @@ renderer.setAnimationLoop((time, frame) => {
   }
   renderer.render(scene, camera);
 });
-
-
-
-
-
