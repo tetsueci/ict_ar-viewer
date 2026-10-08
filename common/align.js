@@ -1195,6 +1195,39 @@ if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(
 // ---------- 毎フレーム ----------
 const tmpM = new THREE.Matrix4();
 // ---------- 重機（config.json に "machines" がある現場だけ。中身は machines.js） ----------
+// ---------- 試験：ゲームコントローラーが読めるか（URL に ?pad を付けたときだけ。2026-10-08） ----------
+// 起動画面と AR の中の両方に、つながっているコントローラー・スティックの値・押しているボタンを出す。
+// AR の中は dom-overlay の中だけが見えるので、overlay の中にも同じ欄を置く
+if (new URLSearchParams(location.search).has('pad')) {
+  const mk = parent => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:99;padding:8px 10px;border-radius:10px;'
+      + 'background:rgba(0,0,0,.72);color:#9ff59f;font:12px/1.45 monospace;white-space:pre-wrap;pointer-events:none';
+    parent.appendChild(d);
+    return d;
+  };
+  const boxes = [mk(document.body), mk($('overlay'))];
+  let events = [];
+  addEventListener('gamepadconnected', e => events.unshift(`つながった：${e.gamepad.id}`));
+  addEventListener('gamepaddisconnected', e => events.unshift(`切れた：${e.gamepad.id}`));
+  const show = () => {
+    const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean);
+    const xr = session ? [...session.inputSources].filter(i => i.gamepad).length : 0;
+    let t = `コントローラー試験（?pad）　AR中=${session ? 'はい' : 'いいえ'}　getGamepads=${navigator.getGamepads ? 'あり' : 'なし'}　読めた台数=${pads.length}`
+      + (session ? `　XRの入力=${xr}` : '') + '\n';
+    if (!pads.length) t += 'まだ読めていません。コントローラーのボタンを 1 回押してください\n';
+    for (const g of pads) {
+      t += `#${g.index} ${g.id.slice(0, 40)}（${g.mapping || '配置不明'}）\n`;
+      t += `  スティック ${g.axes.map(a => (a >= 0 ? '+' : '') + a.toFixed(2)).join(' ')}\n`;
+      const on = g.buttons.map((b, i) => (b.pressed || b.value > 0.1 ? `${i}${b.value < 1 && b.value > 0 ? '(' + b.value.toFixed(1) + ')' : ''}` : null)).filter(Boolean);
+      t += `  押しているボタン ${on.length ? on.join(' ') : '－'}\n`;
+    }
+    if (events.length) t += events.slice(0, 3).join('\n');
+    for (const b of boxes) if (b.textContent !== t) b.textContent = t;
+  };
+  setInterval(show, 150);                       // AR の最中も timer は動く（rAF は止まる）
+}
+
 let mc = null, mcPlacing = false;                // 重機を置くあいだ（タップを重機へ渡す・指で回さない）
 if (cfg.machines) {
   import(new URL('machines.js', import.meta.url).href + new URL(import.meta.url).search)
