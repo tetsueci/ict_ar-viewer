@@ -1057,7 +1057,7 @@ gest.addEventListener('pointerdown', e => {
   tap0 = touches.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
 });
 gest.addEventListener('pointermove', e => {
-  if (!touches.has(e.pointerId) || !placed || !aligning || picking) return;
+  if (!touches.has(e.pointerId) || !placed || !aligning || picking || mcPlacing) return;
   touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
   const g = gstate();
   if (g.n !== g0.n) { g0 = g; const t = touches.get(e.pointerId); gprev = { x: t.x, y: t.y }; return; }
@@ -1074,8 +1074,10 @@ gest.addEventListener('pointermove', e => {
 });
 const up = e => {
   touches.delete(e.pointerId); g0 = touches.size ? gstate() : null;
-  if ((picking || (SIMPLE && placed && aligning)) && tap0 && e.type === 'pointerup' && performance.now() - tap0.t < 600
-      && Math.hypot(e.clientX - tap0.x, e.clientY - tap0.y) < 15) pickAt(e.clientX, e.clientY);
+  const isTap = tap0 && e.type === 'pointerup' && performance.now() - tap0.t < 600
+    && Math.hypot(e.clientX - tap0.x, e.clientY - tap0.y) < 15;
+  if (isTap && mcPlacing) mc?.tap(e.clientX, e.clientY);          // 重機を置く（基準点を拾うのと同じ手順）
+  else if (isTap && (picking || (SIMPLE && placed && aligning))) pickAt(e.clientX, e.clientY);
   tap0 = null;
 };
 
@@ -1193,10 +1195,13 @@ if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(
 // ---------- 毎フレーム ----------
 const tmpM = new THREE.Matrix4();
 // ---------- 重機（config.json に "machines" がある現場だけ。中身は machines.js） ----------
-let mc = null;
+let mc = null, mcPlacing = false;                // 重機を置くあいだ（タップを重機へ渡す・指で回さない）
 if (cfg.machines) {
   import(new URL('machines.js', import.meta.url).href + new URL(import.meta.url).search)
-    .then(m => m.initMachines({ THREE, loader, group, siteToGl, cfg, getHit: () => lastHit }))
+    .then(m => m.initMachines({ THREE, loader, group, siteToGl, cfg,
+      getCamera: () => (renderer.xr.isPresenting ? renderer.xr.getCamera() : camera),
+      getTargets: () => ({ model: modelRoot, cloud }),
+      setPlacing: on => { mcPlacing = on; $('overlay').classList.toggle('mcplace', on); } }))
     .then(r => { mc = r; })
     .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
 }
@@ -1252,4 +1257,5 @@ renderer.setAnimationLoop((time, frame) => {
   }
   renderer.render(scene, camera);
 });
+
 

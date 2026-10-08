@@ -5,13 +5,13 @@
 // 重機は現場モデルのかたまり（group）の子に置くので、2 点合わせ・固定・縮尺に一緒に従う。
 //
 // config.json の書き方：
-//   "machines": [ { "id": "backhoe08" } ]                                  … AR の中で「重機をここへ」で置く
+//   "machines": [ { "id": "backhoe08" } ]                                  … AR の中で「重機を置く」→ モデルか点群をタップして置く
 //   "machines": [ { "id": "backhoe08", "x": 0, "y": 0, "z": 0, "heading": 0 } ]  … 現場の座標に置いておく
 //   heading は CAD と同じく東から左回りの角度（°）。"kenkiBase" で読み先を変えられる
 const KENKI = 'https://tetsueci.github.io/ict_kenki-ar/';
 
 export async function initMachines(api) {
-  const { THREE, loader, group, siteToGl, cfg, getHit } = api;
+  const { THREE, loader, group, siteToGl, cfg, getCamera, getTargets, setPlacing } = api;
   const base = cfg.kenkiBase || KENKI;
   const list = (Array.isArray(cfg.machines) ? cfg.machines : []).filter(m => m && m.id);
   if (!list.length) return;
@@ -107,7 +107,7 @@ export async function initMachines(api) {
     <div class="row" id="mcbar">
       <button id="mctgl">重機 ▲</button>
       <select id="mcsel"></select>
-      <button id="mchere" disabled>重機をここへ</button>
+      <button id="mchere" disabled>重機を置く</button>
     </div>
     <div class="row mcbody"><select id="mcctl"></select><input id="mcval" type="range"><span id="mcnum" class="mcnum"></span></div>
     <div class="row mcbody"><span id="mcread" class="mcread"></span></div>`;
@@ -119,7 +119,7 @@ export async function initMachines(api) {
     $('mcsel').appendChild(o);
   });
   if (units.length < 2) $('mcsel').hidden = true;
-  let cur = 0, ctl = 0, open = false;
+  let cur = 0, ctl = 0, open = false, placing = false;
   const unit = () => units[cur];
   const getv = (u, c) => (c.key === '_heading' ? u.heading : u.st[c.key]);
   function fillControls() {
@@ -146,7 +146,8 @@ export async function initMachines(api) {
   function showValue() {
     const u = unit(), c = u.controls[ctl], v = getv(u, c);
     $('mcnum').textContent = c.type === 'choice' ? u.M[c.from][v].name : (+v).toFixed((c.step || 1) < 1 ? 1 : 0) + (c.unit || '');
-    $('mcread').textContent = u.root.visible ? u.readout : '位置合わせの画面で十字を置きたい所に当てて「重機をここへ」';
+    $('mcread').textContent = placing ? 'モデルか点群の、重機を置きたい所をタップしてください'
+      : u.root.visible ? u.readout : '「重機を置く」→ モデルか点群の置きたい所をタップ';
   }
   $('mcsel').onchange = () => { cur = +$('mcsel').value; fillControls(); };
   $('mcctl').onchange = () => { ctl = +$('mcctl').value; pickControl(); };
@@ -155,15 +156,50 @@ export async function initMachines(api) {
     if (c.key === '_heading') u.heading = +$('mcval').value; else u.st[c.key] = +$('mcval').value;
     poseUnit(u); showValue();
   };
-  // 十字の所（現実の地面）へ置く。group の中の座標に直して置くので、以後は現場モデルと一緒に動く
-  $('mchere').onclick = () => {
-    const h = getHit();
-    if (!h) return;
-    group.updateMatrixWorld(true);
-    unit().root.position.copy(h.clone().applyMatrix4(new THREE.Matrix4().copy(group.matrixWorld).invert()));
-    unit().root.visible = true;
+  // ---------- 置く：基準点を拾うときと同じ手順（「重機を置く」→ モデルか点群の置きたい所をタップ） ----------
+  // 十字（現実の地面）に置くと、現場モデルの面と高さが合わず浮いた（2026-10-08）。モデルの面・点群の点に直接置く
+  function setPlace(on) {
+    placing = on;
+    setPlacing(on);                               // align.js：タップを受ける・指で回すのを止める
+    $('mchere').classList.toggle('sel', on);
+    $('mchere').textContent = on ? 'タップで置く（やめる）' : '重機を置く';
     showValue();
-  };
+  }
+  $('mchere').onclick = () => setPlace(!placing);
+  const ray = new THREE.Raycaster();
+  // 画面の (x, y) にあるモデルの面か点群の点。モデルは面に当たった所、点群は画面上でタップにいちばん近く見える点（24 画素以内・ほぼ同じなら手前）
+  function surfaceAt(x, y) {
+    const cam = getCamera(), { model, cloud } = getTargets();
+    ray.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1), cam);
+    let best = null;
+    if (model) {
+      const h = ray.intersectObject(model, true).find(h => h.object.isMesh);
+      if (h) best = { p: h.point.clone(), d: h.distance };
+    }
+    if (cloud) {
+      ray.params.Points.threshold = 3;
+      const inv = new THREE.Matrix4().copy(cam.matrixWorld).invert();
+      const cand = ray.intersectObjects(cloud.children.filter(o => o.visible), false).map(h => {
+        const wp = new THREE.Vector3().fromBufferAttribute(h.object.geometry.getAttribute('position'), h.index).applyMatrix4(h.object.matrixWorld);
+        const c = wp.clone().applyMatrix4(inv), n = c.clone().applyMatrix4(cam.projectionMatrix);
+        return { p: wp, d: -c.z, px: Math.hypot((n.x + 1) / 2 * innerWidth - x, (1 - n.y) / 2 * innerHeight - y) };
+      }).filter(c => c.d > 0 && c.px < 24);
+      if (cand.length) {
+        const pmin = Math.min(...cand.map(c => c.px));
+        const c = cand.filter(c => c.px <= pmin + 3).reduce((a, b) => (b.d < a.d ? b : a));
+        if (!best || c.d < best.d) best = c;     // モデルの面より手前に見える点群の点ならそちら
+      }
+    }
+    return best && best.p;
+  }
+  function placeAt(x, y) {
+    const p = surfaceAt(x, y);
+    if (!p) { $('mcread').textContent = 'モデルにも点群にも当たりませんでした。モデルか点群の上をタップしてください'; return; }
+    group.updateMatrixWorld(true);
+    unit().root.position.copy(p.applyMatrix4(new THREE.Matrix4().copy(group.matrixWorld).invert()));
+    unit().root.visible = true;
+    setPlace(false);
+  }
   function setOpen(v) {
     open = v;
     wrap.classList.toggle('open', open);
@@ -174,12 +210,13 @@ export async function initMachines(api) {
   $('mctgl').onclick = () => setOpen(!open);
   fillControls(); setOpen(false);
 
-  // align.js が 0.5 秒ごとに呼ぶ。位置合わせのとき・現場モデルを置いたあと・十字があるときだけ「重機をここへ」を押せる
+  // align.js が呼ぶ：0.5 秒ごと（現場モデルを置いたあとだけ「重機を置く」を押せる）と、置くあいだのタップ
   return {
     frame(hasHit, aligning, placed) {
-      const b = $('mchere'), off = !(hasHit && placed), hide = !aligning;
+      const b = $('mchere'), off = !placed;
       if (b.disabled !== off) b.disabled = off;
-      if (b.hidden !== hide) b.hidden = hide;
+      if (off && placing) setPlace(false);
     },
+    tap(x, y) { if (placing) placeAt(x, y); },
   };
 }
