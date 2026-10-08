@@ -283,18 +283,18 @@ export async function initMachines(api) {
   // スティックかボタンを使うと「コントローラー操作」になり、画面のボタンと十字を隠す。画面をタップすると戻る。
   // 説明は SELECT（Back・Share・View）か START（Options・Menu）を押しているあいだだけ出す
   const DEAD = 0.15;                              // スティックの遊び
-  const TRAVEL = 2.1;                             // 前進・後退の速さ（m/秒）。1.4（時速 5 km）の 1.5 倍（2026-10-09 AXIO さん指示）
+  const TRAVEL = 1.4;                             // 前進・後退の速さ（m/秒・時速 5 km ほど）。A（ボタン 0）を押しているあいだは 2 倍（2026-10-09 AXIO さん指示）
   const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, SELECT: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
   // 種類ごとの割り当て：[キー, 入力, 速さ（1 秒あたり。スティックを倒しきったとき）]
   // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'BA'（B ボタン +1・A ボタン −1）
   const MAP = {
     backhoe: [['angleCabin', '-LX', 50], ['angleArm', '-LY', 45], ['angleBoom', 'RY', 35], ['angleBucket', 'RX', 70]],
-    rough_terrain_crane: [['angleCabin', '-LX', 40], ['lengthBoom', '-LY', 6], ['angleBoom', 'RY', 20], ['lengthWire', 'T', 6], ['outrigger', 'BA', 1]],
+    rough_terrain_crane: [['angleCabin', '-LX', 40], ['lengthBoom', '-LY', 6], ['angleBoom', 'RY', 20], ['lengthWire', 'T', 6], ['outrigger', 'RX', 1]],
     crawler_crane: [['angleCabin', '-LX', 30], ['angleBoom', 'RY', 16], ['lengthWire', 'T', 6]],
   };
   const HELP = {
     backhoe: '左スティック　←→ 旋回　↑ アームを伸ばす　↓ アームを引く\n右スティック　↑ ブーム下げ　↓ ブーム上げ　← バケット抱え込み　→ バケット開く',
-    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　B アウトリガを張る　A 縮める',
+    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　右スティック → アウトリガを張る　← 縮める',
     crawler_crane: '左スティック　←→ 旋回\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ',
   };
   const help = document.createElement('div');
@@ -332,7 +332,7 @@ export async function initMachines(api) {
   }
   function helpText(u) {
     return `【コントローラー】${u.name}\n` + (HELP[u.M.type] || '')
-      + '\n十字キー ↑↓ 向いている方へ走る（前・後ろ）　←→ 車体の向き\nLB／RB 動かす重機を切り替え（ほかの台はそのまま）\nX 運転席に乗る・降りる　Y いまのスマホの向きを正面にする（乗っているとき）\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
+      + '\n十字キー ↑↓ 向いている方へ走る（前・後ろ。A を押しながらで 2 倍）　←→ 車体の向き\nLB／RB 動かす重機を切り替え（ほかの台はそのまま）\nX 運転席に乗る・降りる　Y いまのスマホの向きを正面にする（乗っているとき）\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
   }
   function tick(time) {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
@@ -370,8 +370,9 @@ export async function initMachines(api) {
     const dv = (btn[BTN.UP] ? 1 : 0) - (btn[BTN.DOWN] ? 1 : 0);
     if (dv && dt && u.root.visible) {
       const h = u.heading * Math.PI / 180;
-      u.root.position.x += Math.cos(h) * dv * TRAVEL * dt;
-      u.root.position.z -= Math.sin(h) * dv * TRAVEL * dt;
+      const sp = TRAVEL * (btn[BTN.A] ? 2 : 1);   // A を押しているあいだ 2 倍
+      u.root.position.x += Math.cos(h) * dv * sp * dt;
+      u.root.position.z -= Math.sin(h) * dv * sp * dt;
       if (time - snapAt > 250) { snapAt = time; u.snap = 'near'; snapPending(); }
     }
     for (const [key, inp, rate] of MAP[u.M.type] || []) {
