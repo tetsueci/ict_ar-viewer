@@ -51,7 +51,12 @@ export async function initMachines(api) {
       await Promise.all(Object.entries(pj).map(async ([name, info]) => {
         if (M.parts && !M.parts.includes(name)) return;
         const g = await loader.loadAsync(base + M.models + info.file);
-        g.scene.traverse(c => { if (c.isMesh) c.material = matOf(name); });
+        // 窓ガラスは透ける材質のプリミティブに分けてある（ict_kenki-ar の EYE.md §5）。透けるものは塗り替えず、奥を隠さないよう depthWrite を切る
+        g.scene.traverse(c => {
+          if (!c.isMesh) return;
+          if (c.material && c.material.transparent) { c.material.depthWrite = false; c.material.userData.glass = true; c.renderOrder = 2; return; }
+          c.material = matOf(name);
+        });
         parts.push([name, g.scene]);
       }));
     }
@@ -392,8 +397,8 @@ export async function initMachines(api) {
   // ---------- 運転席に乗る（2026-10-09） ----------
   // カメラの映像を空で隠し（CG の景色）、運転席の目がスマホの所に来るよう世界（group）を毎フレーム動かす。縮尺は実寸。
   // 旋回・走行すると視点も一緒に動く。スマホを動かすと、車体は止まったまま見回せる。Y で「いまのスマホの向き」を正面にする。
-  // ★目の位置とキャビンの透け方は仮（キャビンの外接箱の中央・床から 1.2 m 上／キャビンを 15% だけ見せる）。
-  //   正は ict_kenki-ar の machines/*.json に "eye"（キャビンの部品の座標・mm）と "cabinOpacity" を入れてもらう（入れば自動でそちらを使う）
+  // ★目の位置・正面は ict_kenki-ar の machines/*.json の "eye"（{ part, point, forward, up }。その部品のブロックの座標・mm。EYE.md）。
+  //   eye が無い重機だけ、仮に「キャビンの外接箱の中央・底から 1.2 m 上・正面は +X」。キャビンの透け方は "cabinOpacity"（無ければ 15%）
   let board = null;                               // { u, p0: スマホの位置, yaw0: 正面にした向き, recenter }
   const sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
@@ -403,18 +408,25 @@ export async function initMachines(api) {
   }));
   sky.renderOrder = -100; sky.frustumCulled = false; sky.visible = false;
   scene.add(sky);
-  // 目の位置（キャビンの部品の座標・mm）。kenki の eye があればそれ、無ければキャビンの外接箱の中央・底から 1.2 m 上
+  // 目：{ node: 目が付いている部品, point, forward }（部品のブロックの座標・mm）。kenki の eye があればそれ
   function eyeOf(u) {
     if (u.eye) return u.eye;
-    const cab = u.nodes.cabin;
-    if (Array.isArray(u.M.eye)) u.eye = new THREE.Vector3(...u.M.eye);
-    else if (cab) {
+    const e = u.M.eye;
+    if (e && typeof e === 'object' && Array.isArray(e.point) && u.nodes[e.part || 'cabin']) {
+      u.eye = { node: u.nodes[e.part || 'cabin'], point: new THREE.Vector3(...e.point),
+        forward: new THREE.Vector3(...(e.forward || [1, 0, 0])) };
+      return u.eye;
+    }
+    const cab = u.nodes.cabin;                    // 仮：キャビンの外接箱の中央・底から 1.2 m 上
+    let point = new THREE.Vector3(0, 0, 2500);
+    if (cab) {
       const b = new THREE.Box3();
       cab.children[0].updateMatrixWorld(true);
       cab.children[0].traverse(o => { if (o.isMesh) { o.geometry.computeBoundingBox(); b.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrix)); } });
       const c = b.getCenter(new THREE.Vector3());
-      u.eye = new THREE.Vector3(c.x, c.y, b.min.z + 1200);
-    } else u.eye = new THREE.Vector3(0, 0, 2500);
+      point = new THREE.Vector3(c.x, c.y, b.min.z + 1200);
+    }
+    u.eye = { node: cab || null, point, forward: new THREE.Vector3(1, 0, 0) };
     return u.eye;
   }
   // キャビンを透かす（乗っている台だけ。降りたら戻す）
@@ -424,6 +436,7 @@ export async function initMachines(api) {
     const op = Number.isFinite(u.M.cabinOpacity) ? u.M.cabinOpacity : 0.15;
     cab.traverse(o => {
       if (!o.isMesh) return;
+      if (o.material?.userData?.glass) return;     // 窓ガラスはもともと透けている
       if (on) { o.userData.mat0 = o.material; o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = op; o.material.depthWrite = false; }
       else if (o.userData.mat0) { o.material = o.userData.mat0; delete o.userData.mat0; }
     });
@@ -456,14 +469,13 @@ export async function initMachines(api) {
       board.recenter = false;
     }
     const u = board.u;
-    // キャビンの部品 → body（CAD）→ root（置き場所と車体の向き）＝ group の中の行列
+    // 目が付いている部品 → body（CAD）→ root（置き場所と車体の向き）＝ group の中の行列
     u.root.updateMatrix();
-    const cab = u.nodes.cabin;
+    const ey = eyeOf(u);
     const toGroup = new THREE.Matrix4().multiplyMatrices(u.root.matrix, u.root.children[0].matrix);
-    if (cab) toGroup.multiply(cab.matrix);
-    vE.copy(eyeOf(u)).applyMatrix4(toGroup);                        // 目（group の中）
-    vO.set(0, 0, 0).applyMatrix4(toGroup);
-    vF.set(1000, 0, 0).applyMatrix4(toGroup).sub(vO);               // キャビンの正面（CAD の +X）
+    if (ey.node) toGroup.multiply(ey.node.matrix);
+    vE.copy(ey.point).applyMatrix4(toGroup);                        // 目（group の中）
+    vF.copy(ey.forward).transformDirection(toGroup);                // 正面（eye.forward。平行移動は掛けない）
     const yawF = Math.atan2(-vF.z, vF.x);
     // 世界の回転：キャビンの正面がスマホの正面（yaw0）を向くように。縮尺は 1
     mA.makeRotationY(board.yaw0 - yawF);
