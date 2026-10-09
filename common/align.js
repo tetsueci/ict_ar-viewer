@@ -351,7 +351,16 @@ const glToSite = v => ({ x: v.x + O.x, y: -v.z + O.y, z: v.y + O.z });
 const SKEY = 'arstart:' + location.pathname;
 let startAt = null;                             // 始める場所（現場座標）
 let xrOK = false;                               // AR を始められる端末か（下で調べる）
-if (STARTPICK && !KEY) try { startAt = JSON.parse(localStorage.getItem(SKEY)); } catch (e) {}
+// QR から開く（机の上で縮めて見る。2026-10-09）：URL の ?at= で始める場所を決め、地図で選ばなくてよくする。
+//   ?at=c … 点群の真ん中の地面　?at=X,Y,Z … 現場座標。AR の中では十字を QR の真ん中に当てて「◎ S をここへ」。
+//   縮尺は ?scale=1/100。向きは 2 本指でひねって合わせる。この始める場所はスマホに覚えない
+const QS = new URLSearchParams(location.search);
+const AT = STARTPICK ? QS.get('at') : null;
+if (AT && AT !== 'c') {
+  const [x, y, z] = AT.split(',').map(Number);
+  if (isFinite(x) && isFinite(y)) startAt = { x, y, z: isFinite(z) ? z : O.z };
+}
+if (STARTPICK && !KEY && !AT) try { startAt = JSON.parse(localStorage.getItem(SKEY)); } catch (e) {}
 if (SIMPLE) {
   PT.length = 0;
   for (const k of [0, 1]) PT.push({ name: `P${k + 1}`, x: O.x, y: O.y, z: O.z, ...(k === 0 ? startAt : null), unset: true });
@@ -433,7 +442,10 @@ if (cfg.pointcloud) {
     });
     cloud = splitTiles(sc); group.add(cloud);
     $('support').textContent = '';
-    if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
+    if (isStart(0) && AT === 'c') {               // QR（?at=c）：点群の真ん中の地面を始める場所にする
+      const v = cloudCenterGround();
+      startAt = glToSite(v); moveStart(v); updateStart();
+    } else if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
     picker?.addCloud(cloud);
     sc.traverse(o => o.geometry?.dispose());     // 元の 1 本は使わない（升に分けた写しを使う）
     paintRange(); thinCloud();
@@ -762,6 +774,7 @@ if (STARTPICK) {
 let placed = false, w = new THREE.Vector3(), theta = 0, s = 1, pivot = 0, target = PT.length > 1 ? 1 : 0;
 // S（始める場所）のほかに前回拾った Q があれば、Q1 を固定点・Q2 を向ける点にして始める（S は ◀ ▶ で選べる）
 if (PT[0]?.start && PT.length > 1) { pivot = 1; target = PT.length > 2 ? 2 : 0; }
+if (AT) { pivot = 0; target = 0; }                // QR から開いたときは、拾った Q があっても S（QR の場所）を固定点にする
 const obs = new Map();                          // 記録した点：番号 → 十字を当てた位置（AR の座標）
 let aligning = true, allowScale = false, translucent = false;
 
@@ -954,8 +967,10 @@ function showUI() {
   let st;
   if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>直すときは「位置合わせ」';
   else if (!lastHit) st = '<span class="mode adj">位置合わせ</span><b>地面を探しています…</b><br>スマホをゆっくり左右に動かしてください';
+  else if (!placed && PT[pivot].start && AT) st = `<span class="mode adj">位置合わせ</span><b>十字を QR の真ん中に当てて「◎ ${a} をここへ」</b><br>そのあと 2 本指でひねると向きが回る`;
   else if (!placed && PT[pivot].start) st = `<span class="mode adj">位置合わせ</span><b>十字を足もと（地図で選んだ始める場所）に当てて「◎ ${a} をここへ」</b><br>点群が大まかな位置に出る`;
   else if (!placed) st = `<span class="mode adj">位置合わせ</span><b>十字を ${a} の印に合わせて「◎ ${a} をここへ」</b>`;
+  else if (PT[pivot].start && AT) st = `<span class="mode adj">位置合わせ</span><b>2 本指でひねって向きを合わせる</b><br>QR の真ん中が固定点。合ったら「固定する」`;
   else if (PT[pivot].start) st = `<span class="mode adj">位置合わせ</span><b>「点群の点を拾う」→ 現地で分かる所（白線の角など）をタップ</b><br>拾った点が固定点になる。点群は 1 本指でなぞると回る`;
   else if (noTgt) st = `<span class="mode adj">位置合わせ</span><b>「点群の点を拾う」→ ${a} から離れた所をタップして 2 点目を拾う</b><br>拾ったら十字を現地の同じ所に当てて「→ 向ける」`;
   else if (obs.size < 2) st = `<span class="mode adj">位置合わせ</span><b>十字を ${b} の印に合わせて「→ ${b} へ向ける」</b><br>画面をなぞる・ひねると ${a} を中心に回る。合ったら「固定する」`;
@@ -999,6 +1014,11 @@ function paintScales(force) {
   });
 }
 function scaleText() { return allowScale ? '' : (Math.abs(s - 1) < 1e-9 ? '（実寸）' : `（縮尺 ${fmt(scN)}/${fmt(scD)}）`); }
+// URL の ?scale=1/100（QR から開いたとき）で縮尺を決める。あとから欄で変えてもよい
+{
+  const m = /^(\d*\.?\d+)\/(\d*\.?\d+)$/.exec(QS.get('scale') || '');
+  if (m && cfg.scales !== false && +m[1] > 0 && +m[2] > 0) { setRatio(+m[1], +m[2]); paintScales(true); }
+}
 
 // ボタン
 $('pp').onclick = () => setPivot(step(pivot, -1, -1));
