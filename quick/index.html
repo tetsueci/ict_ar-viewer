@@ -20,13 +20,15 @@ document.write('<script src="../common/vlaunch.js' + V + '"><' + '/script>');
     background: rgba(0,0,0,.65); color: #fff; font: inherit; font-size: 15px; font-weight: 700; }
   #go { left: 50%; transform: translateX(-50%); background: #1f6feb !important; white-space: nowrap; }
   #again { left: 16px; } #end { right: 16px; }
-  #note { position: absolute; left: 16px; right: 16px; bottom: 76px; font-size: 11px; color: #7a3d00; text-align: center; pointer-events: none; }
+  #tilt { left: 50%; transform: translateX(-50%); bottom: 78px !important; white-space: nowrap; }
+  #note { position: absolute; left: 16px; right: 16px; bottom: 140px; font-size: 11px; color: #7a3d00; text-align: center; pointer-events: none; }
 </style>
 </head>
 <body>
 <div id="ov">
   <div id="msg">読み込んでいます…</div>
   <div id="note">表示するモデルの位置・向き・高さの精度は保証しません。施工・測量・出来形の判断には使わないでください。</div>
+  <button id="tilt" type="button" hidden>傾けて見回す（iPhone）</button>
   <button id="go" type="button" hidden>スマホを動かして見る</button>
   <button id="again" type="button" hidden>置き直す</button>
   <button id="end" type="button" hidden>終わる</button>

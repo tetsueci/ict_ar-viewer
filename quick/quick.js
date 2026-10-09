@@ -100,6 +100,17 @@ const zee = new THREE.Vector3(0, 0, 1), eul = new THREE.Euler(), q1 = new THREE.
 const qDev = new THREE.Quaternion(), qBase = new THREE.Quaternion(), qLook = new THREE.Quaternion();
 let ori = null, based = false;
 addEventListener('deviceorientation', e => { if (e.alpha != null) ori = e; });
+// iPhone は傾きを読むのに許可が要る（タップで聞く。Safari の決まり）。許可されたらボタンを消す
+const DO = window.DeviceOrientationEvent;
+if (DO && typeof DO.requestPermission === 'function' && typeof IS_IOS !== 'undefined' && IS_IOS) {   // Chrome にも関数はあるが、許可を聞かずに傾きを送ってくる
+  const b = $('tilt');
+  b.hidden = false;
+  b.onclick = async () => {
+    const r = await DO.requestPermission().catch(() => 'denied');
+    if (r === 'granted') b.hidden = true;
+    else b.textContent = '傾きが使えません（設定で許可）';
+  };
+}
 function deviceQuat() {
   const a = THREE.MathUtils.degToRad(ori.alpha), b = THREE.MathUtils.degToRad(ori.beta), g = THREE.MathUtils.degToRad(ori.gamma);
   const o = THREE.MathUtils.degToRad(screen.orientation?.angle || 0);
@@ -114,9 +125,12 @@ let xrOK = false, session = null;
 function paint() {
   go.hidden = !ready || !!session;
   go.textContent = xrOK ? 'スマホを動かして見る'
-    : window.__vl?.launchRequired ? 'スマホを動かして見る（iPhone：開く）' : 'スマホを動かして見る（この端末は不可）';
+    : window.__vl?.launchRequired ? 'スマホを動かして見る（iPhone：開く）'
+    : (typeof IS_IOS !== 'undefined' && IS_IOS && VL_KEY && !window.__vl) ? 'スマホを動かして見る（準備しています…）'
+    : 'スマホを動かして見る（この端末は不可）';
   go.disabled = !xrOK && !window.__vl?.launchRequired;
   $('again').hidden = $('end').hidden = !session;
+  if (session) $('tilt').hidden = true;
 }
 if (navigator.xr) xrOK = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
 addEventListener('vlaunch-initialized', paint);
