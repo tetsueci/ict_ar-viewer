@@ -1240,6 +1240,30 @@ function launchReady(d) {
   $('start').onclick = () => { location.href = d.launchUrl; };
   return true;
 }
+let xrDone = false;                             // AR に対応しているかを調べ終えたか
+// QR から開いたとき（?at=）：起動画面を出さず、画面いっぱいの「タップで AR を始める」にする。
+// ブラウザは人がタップしないと AR を始めさせないので、タップ 1 回は残る（iPhone は Variant Launch の「開く」もある）
+if (AT) {
+  const q = document.createElement('button');
+  q.id = 'qrgo'; q.type = 'button';
+  q.style.cssText = 'position:fixed;inset:0;z-index:50;border:0;background:rgba(17,20,26,.94);color:#fff;'
+    + 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:24px;font:inherit;text-align:center';
+  q.innerHTML = '<b style="font-size:26px"></b><span style="font-size:15px;opacity:.85">十字を QR の真ん中に当てて「◎ S をここへ」→ 2 本指でひねって向きを合わせる</span>'
+    + '<span style="font-size:13px;color:#ffb020;max-width:30em">AR で表示するモデルの配置精度（位置・向き・高さ）は保証しません。施工・測量・出来形の判断には使わないでください。</span>';
+  document.body.appendChild(q);
+  const paint = () => {
+    const b = $('start');
+    const no = xrDone && b.disabled && !xrOK && !(IS_IOS && VL_KEY);   // 始められない端末（iPhone は Variant Launch の準備を待つ）
+    q.firstChild.textContent = no ? 'この端末では AR を始められません（タップで戻る）' : b.disabled ? '読み込んでいます…' : 'タップで AR を始める';
+    q.dataset.no = no ? '1' : '';
+  };
+  const iv = setInterval(paint, 300); paint();
+  q.onclick = () => {
+    if ($('start').disabled) { if (q.dataset.no) { clearInterval(iv); q.remove(); } return; }   // 始められない端末：ふだんの画面に戻して理由を見せる
+    clearInterval(iv); q.remove();
+    $('start').click();
+  };
+}
 if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false)) {
   xrOK = true; updateStart();
 } else if (!launchReady(window.__vl)) {
@@ -1248,6 +1272,7 @@ if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(
     : 'この端末・ブラウザでは AR を始められません（Android の Chrome・ARCore 対応機か、iPhone で開いてください）。';
   window.addEventListener('vlaunch-initialized', e => { if (launchReady(e.detail)) $('support').textContent = ''; });
 }
+xrDone = true;
 
 // ---------- 毎フレーム ----------
 const tmpM = new THREE.Matrix4();
