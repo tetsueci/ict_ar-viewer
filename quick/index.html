@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<!-- 机の上ですぐ見る AR（QR から開く）。位置合わせの画面（../common/align.js）とは別の、これだけのページ。
+     URL：?d=/リポジトリ/フォルダ/（config.json のあるフォルダ。同じサイトの中だけ）&s=100（縮尺の分母） -->
+<script>
+var V = '?v=' + Date.now();
+document.write('<script src="../common/vlaunch.js' + V + '"><' + '/script>');
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>机上 AR</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #11141a; color: #fff; font-family: system-ui, sans-serif; }
+  #go { position: fixed; inset: 0; border: 0; background: #11141a; color: #fff; font: inherit; padding: 24px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
+  #go b { font-size: 28px; }
+  #go small { font-size: 13px; color: #ffb020; max-width: 30em; }
+  #ov { position: fixed; inset: 0; touch-action: none; }
+  #msg { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px;
+    background: rgba(0,0,0,.65); font-size: 15px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+  #ov button { position: absolute; bottom: 20px; padding: 10px 16px; border: 0; border-radius: 10px;
+    background: rgba(0,0,0,.6); color: #fff; font: inherit; font-size: 15px; }
+  #again { left: 16px; } #end { right: 16px; }
+</style>
+</head>
+<body>
+<button id="go" type="button"><b>読み込んでいます…</b><span id="sub"></span>
+  <small>AR で表示するモデルの配置精度（位置・向き・高さ）は保証しません。施工・測量・出来形の判断には使わないでください。</small></button>
+<div id="ov" hidden><div id="msg"></div><button id="again" type="button">置き直す</button><button id="end" type="button">終わる</button></div>
+<script type="module">import('./quick.js' + V);</script>
+</body>
+</html>
