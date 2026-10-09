@@ -2,32 +2,35 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<!-- 机の上ですぐ見る AR（QR から開く）。位置合わせの画面（../common/align.js）とは別の、これだけのページ。
+<!-- 机の上ですぐ見る 3D（QR から開く）。カメラの映像は出さず、3D モデルだけを出す。位置合わせの画面（../common/align.js）とは別の、これだけのページ。
      URL：?d=/リポジトリ/フォルダ/（config.json のあるフォルダ。同じサイトの中だけ）&s=100（縮尺の分母） -->
 <script>
 var V = '?v=' + Date.now();
 document.write('<script src="../common/vlaunch.js' + V + '"><' + '/script>');
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>机上 AR</title>
+<title>机上 3D</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #11141a; color: #fff; font-family: system-ui, sans-serif; }
-  #go { position: fixed; inset: 0; border: 0; background: #11141a; color: #fff; font: inherit; padding: 24px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
-  #go b { font-size: 28px; }
-  #go small { font-size: 13px; color: #ffb020; max-width: 30em; }
+  html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; background: #cfd8e3; color: #fff; font-family: system-ui, sans-serif; }
+  canvas { display: block; }
   #ov { position: fixed; inset: 0; touch-action: none; }
-  #msg { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); padding: 8px 14px; border-radius: 999px;
-    background: rgba(0,0,0,.65); font-size: 15px; font-weight: 700; white-space: nowrap; pointer-events: none; }
-  #ov button { position: absolute; bottom: 20px; padding: 10px 16px; border: 0; border-radius: 10px;
-    background: rgba(0,0,0,.6); color: #fff; font: inherit; font-size: 15px; }
+  #msg { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 8px 14px; border-radius: 14px;
+    background: rgba(0,0,0,.6); font-size: 14px; font-weight: 700; text-align: center; pointer-events: none; }
+  #ov button { position: absolute; bottom: 18px; padding: 12px 16px; border: 0; border-radius: 12px;
+    background: rgba(0,0,0,.65); color: #fff; font: inherit; font-size: 15px; font-weight: 700; }
+  #go { left: 50%; transform: translateX(-50%); background: #1f6feb !important; white-space: nowrap; }
   #again { left: 16px; } #end { right: 16px; }
+  #note { position: absolute; left: 16px; right: 16px; bottom: 76px; font-size: 11px; color: #7a3d00; text-align: center; pointer-events: none; }
 </style>
 </head>
 <body>
-<button id="go" type="button"><b>読み込んでいます…</b><span id="sub"></span>
-  <small>AR で表示するモデルの配置精度（位置・向き・高さ）は保証しません。施工・測量・出来形の判断には使わないでください。</small></button>
-<div id="ov" hidden><div id="msg"></div><button id="again" type="button">置き直す</button><button id="end" type="button">終わる</button></div>
+<div id="ov">
+  <div id="msg">読み込んでいます…</div>
+  <div id="note">表示するモデルの位置・向き・高さの精度は保証しません。施工・測量・出来形の判断には使わないでください。</div>
+  <button id="go" type="button" hidden>スマホを動かして見る</button>
+  <button id="again" type="button" hidden>置き直す</button>
+  <button id="end" type="button" hidden>終わる</button>
+</div>
 <script type="module">import('./quick.js' + V);</script>
 </body>
 </html>
