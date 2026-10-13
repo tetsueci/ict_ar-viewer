@@ -1223,89 +1223,13 @@ gest.addEventListener('pointercancel', up);
 
 // ---------- 開始・終了 ----------
 let session = null, hitSource = null, refSpace = null;
-// ---------- 奥行きで隠す（Android の Chrome：WebXR の depth-sensing。2026-10-14） ----------
-// カメラが測った奥行きより奥にあるモデルを描かない。机の上に縮めて置き、机の下へ回り込むと、机の板の向こうのモデルが隠れる
-// （これが無いと、もぐり込んだはずなのに上から俯瞰しているように見えた。AXIO さん 2026-10-14）。
-// 実寸の現場では地下の管路が地面に隠れて見えなくなるので、既定は縮めているとき（1/2 より小さい）だけ「あり」。ボタンで切り替える。
-// iPhone（Variant Launch）は頼まない（対応が分からないため）
-const DEPTH_MARGIN = 0.02;                      // 奥行きの誤差のぶん（m）。本物より 2 cm 以上奥にあるものだけ隠す
-let depthAvail = false, depthUser = null;       // depthUser：ボタンで決めた値（null＝縮尺で決める）
-const depthOn = () => depthAvail && (depthUser ?? s < 0.5);
-const occMat = new THREE.ShaderMaterial({
-  uniforms: {
-    tDepth: { value: null }, uvT: { value: new THREE.Matrix4() }, toM: { value: 0.001 },
-    proj: { value: new THREE.Matrix4() }, vp: { value: new THREE.Vector4(0, 0, 1, 1) }, margin: { value: DEPTH_MARGIN },
-  },
-  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
-  // 奥行きは 1 画素 2 バイト（下位・上位）。RG の 2 色で上げる（WebGL2 は LuminanceAlpha を上げられなかった）。画面の位置 → 奥行きの画像の位置は uvT（normDepthBufferFromNormView）
-  fragmentShader: `uniform sampler2D tDepth; uniform mat4 uvT; uniform float toM; uniform mat4 proj; uniform vec4 vp; uniform float margin;
-    void main() {
-      vec2 v = vec2((gl_FragCoord.x - vp.x) / vp.z, 1.0 - (gl_FragCoord.y - vp.y) / vp.w);
-      vec2 uv = (uvT * vec4(v, 0.0, 1.0)).xy;
-      vec4 t = texture2D(tDepth, uv);
-      float d = (t.r * 255.0 + t.g * 255.0 * 256.0) * toM;
-      if (d <= 0.0) discard;
-      vec4 c = proj * vec4(0.0, 0.0, -(d + margin), 1.0);
-      gl_FragDepth = clamp(c.z / c.w * 0.5 + 0.5, 0.0, 1.0);
-      gl_FragColor = vec4(0.0);
-    }`,
-  depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true, colorWrite: false,   // depthTest を切ると奥行きも書かれない
-});
-const occ = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), occMat);
-occ.frustumCulled = false; occ.renderOrder = -1000; occ.visible = false;   // ほかより先に描いて、奥行きだけを書く
-occ.onBeforeRender = (r, sc, cam) => {
-  occMat.uniforms.proj.value.copy(cam.projectionMatrix);
-  if (cam.viewport) occMat.uniforms.vp.value.copy(cam.viewport);
-};
-scene.add(occ);
-let depthTex = null;
-let depthWas = null;
-function updateDepth(frame) {
-  occ.visible = false;
-  if (depthOn() !== depthWas) { depthWas = depthOn(); paintDepth(); }   // 縮尺を変えると既定が変わる
-  if (!depthOn()) return;
-  let di = null;
-  try { di = frame.getDepthInformation(frame.getViewerPose(refSpace)?.views[0]); } catch (e) { return; }
-  if (!di) return;
-  const u8 = new Uint8Array(di.data);
-  if (!depthTex || depthTex.image.width !== di.width || depthTex.image.height !== di.height) {
-    depthTex?.dispose();
-    depthTex = new THREE.DataTexture(new Uint8Array(u8.length), di.width, di.height, THREE.RGFormat, THREE.UnsignedByteType);
-    depthTex.magFilter = depthTex.minFilter = THREE.NearestFilter;   // 2 バイトを混ぜないように、なめらかにしない
-    depthTex.generateMipmaps = false; depthTex.unpackAlignment = 1;
-    occMat.uniforms.tDepth.value = depthTex;
-  }
-  depthTex.image.data.set(u8); depthTex.needsUpdate = true;
-  occMat.uniforms.uvT.value.fromArray(di.normDepthBufferFromNormView.matrix);
-  occMat.uniforms.toM.value = di.rawValueToMeters;
-  occ.visible = true;
-}
-const depthBtns = ['exit1', 'exit2'].map(id => {
-  const b = document.createElement('button');
-  b.hidden = true;
-  b.onclick = () => { depthUser = !depthOn(); paintDepth(); };
-  $(id).before(b);
-  return b;
-});
-function paintDepth() {
-  depthBtns.forEach(b => { b.hidden = !depthAvail; b.textContent = `奥行きで隠す：${depthOn() ? 'あり' : 'なし'}`; b.classList.toggle('off', !depthOn()); });
-}
-
 async function startAR() {
   const overlay = $('overlay');
   session = await navigator.xr.requestSession('immersive-ar', {
     requiredFeatures: ['hit-test'],
-    optionalFeatures: ['local', 'dom-overlay', 'anchors', ...(IS_IOS ? [] : ['depth-sensing'])],
+    optionalFeatures: ['local', 'dom-overlay', 'anchors'],
     domOverlay: { root: overlay },
-    ...(IS_IOS ? {} : { depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha'] } }),
   });
-  // 奥行きが使えるか。three.js 0.170 は depth-sensing があると GPU 用の読み方（XRWebGLBinding）を毎フレーム呼び、
-  // Android の Chrome（CPU 用・binding なし）では落ちるので、three.js からは見えなくする（読むのは updateDepth が自分でやる）
-  depthAvail = !!session.enabledFeatures?.includes('depth-sensing') && session.depthUsage === 'cpu-optimized'
-    && ['luminance-alpha', 'unsigned-short'].includes(session.depthDataFormat);   // どちらも 1 画素 2 バイト
-  if (session.enabledFeatures?.includes('depth-sensing'))
-    Object.defineProperty(session, 'enabledFeatures', { value: session.enabledFeatures.filter(f => f !== 'depth-sensing') });
-  depthUser = null; paintDepth();
   overlay.classList.add('on');
   overlay.addEventListener('beforexrselect', e => e.preventDefault());
   picker?.release?.();                          // 起動画面の地図の点群（2 つ目の写し）を下ろして、メモリと熱を減らす
@@ -1316,7 +1240,6 @@ async function startAR() {
   hitSource = await session.requestHitTestSource({ space: viewer });
   session.addEventListener('end', () => {
     hitSource = null; session = null; lastHit = null; reticle.visible = false;
-    depthAvail = false; occ.visible = false; paintDepth();
     anchor = null; anchorOffset = null; anchorWant = false;
     placed = false; aligning = true; theta = 0; s = 1; obs.clear();
     if (SIMPLE) setSlot(0);
@@ -1397,7 +1320,6 @@ if (cfg.machines) {
 }
 let liveAt = 0, tileAt = 0;
 renderer.setAnimationLoop((time, frame) => {
-  if (frame && depthAvail) updateDepth(frame);
   if (frame && hitSource) {
     if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); mc?.frame(!!lastHit, aligning, placed); }
     mc?.tick(time);                              // ゲームコントローラーで重機を動かす（毎フレーム）
