@@ -495,16 +495,17 @@ let cloudStep = 0.1;                            // 点の間隔の目安（m）�
 function splitTiles(sc) {
   const buckets = new Map();
   const v = new THREE.Vector3();
-  let mat = null;
+  let mat = null, layer = -1;
   sc.traverse(o => {
     if (!o.isPoints) return;
     mat = o.material;
+    layer++;                                      // LAS ごとの node の順（config.json の cloudLayers と同じ順）
     const a = o.geometry.getAttribute('position'), c = o.geometry.getAttribute('color');
     for (let i = 0; i < a.count; i++) {
       v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
-      const k = (Math.floor(v.x / TILE) + 32768) * 65536 + (Math.floor(v.z / TILE) + 32768);
+      const k = ((Math.floor(v.x / TILE) + 32768) * 65536 + (Math.floor(v.z / TILE) + 32768)) * 16 + Math.min(layer, 15);
       let b = buckets.get(k);
-      if (!b) buckets.set(k, b = { p: [], c: [], ix: Math.floor(v.x / TILE), iz: Math.floor(v.z / TILE) });
+      if (!b) buckets.set(k, b = { p: [], c: [], ix: Math.floor(v.x / TILE), iz: Math.floor(v.z / TILE), layer });
       b.p.push(v.x, v.y, v.z);
       if (c) b.c.push(c.getX(i), c.getY(i), c.getZ(i));
     }
@@ -526,7 +527,7 @@ function splitTiles(sc) {
     if (b.c.length) geo.setAttribute('color', new THREE.Uint8BufferAttribute(b.c.map(x => Math.round(x * 255)), 3, true));
     const obj = new THREE.Points(geo, mat);
     g.add(obj);
-    tiles.push({ obj, n, x0: b.ix * TILE, x1: (b.ix + 1) * TILE, z0: b.iz * TILE, z1: (b.iz + 1) * TILE });
+    tiles.push({ obj, n, layer: b.layer, x0: b.ix * TILE, x1: (b.ix + 1) * TILE, z0: b.iz * TILE, z1: (b.iz + 1) * TILE });
   }
   // 点の間隔の目安＝1 / √(点の数 ÷ 点のある升（0.5 m 角）の面積)。2 cm〜50 cm に収める
   let nPts = 0;
@@ -551,6 +552,7 @@ function updateTiles(cam) {
   if (!tiles.length || !placed) return;
   camLocal.setFromMatrixPosition(cam.matrixWorld).applyMatrix4(tmpM.copy(group.matrix).invert());
   for (const t of tiles) {
+    if (layerOn[t.layer] === false) { t.obj.visible = false; continue; }   // LAS ごとのボタンで隠した点群
     if (!cloudRange) { t.obj.visible = true; continue; }
     const dx = Math.max(t.x0 - camLocal.x, 0, camLocal.x - t.x1), dz = Math.max(t.z0 - camLocal.z, 0, camLocal.z - t.z1);
     t.obj.visible = Math.hypot(dx, dz) * (mcBoarded ? 1 : s) <= cloudRange;   // 重機に乗っているあいだは実寸
@@ -560,6 +562,30 @@ function paintRange() {
   const t = cloudRange ? `範囲 ${cloudRange}m` : '範囲 全部';
   $('range1').textContent = $('range2').textContent = t;
 }
+// LAS ごとに出す・隠す（config.json の "cloudLayers"。tools/las_to_points.py が 2 本以上のとき書く）。
+// 「点群：小/大/なし」の隣にボタンを 1 つずつ出す。隠した点群は描かず、「点群の点を拾う」でも拾わない
+const LAYERS = Array.isArray(cfg.cloudLayers) && cfg.cloudLayers.length > 1 ? cfg.cloudLayers : [];
+const layerOn = LAYERS.map(() => true);
+const layerBtns = [];
+for (const id of ['cloud1', 'cloud2']) {
+  let at = $(id);
+  LAYERS.forEach((name, i) => {
+    const b = document.createElement('button');
+    b.className = $(id).className;
+    b.dataset.layer = i;
+    b.onclick = () => { layerOn[i] = !layerOn[i]; paintLayers(); tileAt = 0; };   // 次のフレームですぐ描き直す
+    at.after(b); at = b;
+    layerBtns.push(b);
+  });
+}
+function paintLayers() {
+  for (const b of layerBtns) {
+    const i = +b.dataset.layer;
+    b.textContent = `${LAYERS[i]}：${layerOn[i] ? 'あり' : 'なし'}`;
+    b.classList.toggle('off', !layerOn[i]);
+  }
+}
+paintLayers();
 function setCloudSize(k) {
   cloudSize = k;
   const t = ['点群：なし', '点群：小', '点群：大'][k];

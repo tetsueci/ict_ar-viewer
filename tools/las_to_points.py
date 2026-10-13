@@ -4,6 +4,8 @@
     python tools/las_to_points.py 地表面.las 構造物.las ボックス.las --out <フォルダ> --voxel 0.2,0.1,0.05
 
 - LAS は何本でもよい。1 つの点群（pointcloud.glb）にまとめる（common/align.js が読むのは 1 本だけ）。
+  ★2 本以上なら LAS ごとに別のまとまり（node）で書き、config.json の "cloudLayers" に名前を書く
+  （AR の中で LAS ごとに出す・隠すのボタンが出る）。名前は --labels（カンマ区切り）、無ければファイル名
   --voxel をカンマで並べると、LAS ごとに間引きの格子を変えられる（地表面は粗く・構造物は細かく）
 - 範囲（--crop、平面直角座標の m）で切り、--voxel（m）の格子ごとに 1 点だけ残す（格子に入った最初の点）
 - 座標はフォルダの config.json の origin を引いて入れる（モデルと同じ。common/align.js が足し戻す）。
@@ -89,6 +91,7 @@ def main():
     ap.add_argument("--crop", help="xmin,ymin,xmax,ymax（m）。無ければ全体")
     ap.add_argument("--voxel", default="0.1", help="間引きの格子（m）。LAS ごとに変えるならカンマで並べる")
     ap.add_argument("--name", default="pointcloud.glb")
+    ap.add_argument("--labels", help="LAS ごとの名前（カンマ区切り。AR の中のボタンに出る）。無ければファイル名")
     ap.add_argument("--no-compress", action="store_true")
     ap.add_argument("--chunk", type=int, default=5_000_000)
     a = ap.parse_args()
@@ -102,10 +105,13 @@ def main():
     if len(vox) != len(a.las):
         raise SystemExit(f"--voxel の数（{len(vox)}）と LAS の数（{len(a.las)}）が合いません")
     crop = [float(c) for c in a.crop.split(",")] if a.crop else None
+    labels = a.labels.split(",") if a.labels else [os.path.splitext(os.path.basename(f))[0] for f in a.las]
+    if len(labels) != len(a.las):
+        raise SystemExit(f"--labels の数（{len(labels)}）と LAS の数（{len(a.las)}）が合いません")
 
     t0 = time.time()
-    ps, cs, ntot = [], [], 0
-    for path, v in zip(a.las, vox):
+    ps, cs, names, ntot = [], [], [], 0
+    for path, v, lb in zip(a.las, vox, labels):
         p, c, n = sample(path, v, crop, O, a.chunk)
         ntot += n
         if not len(p):
@@ -116,19 +122,26 @@ def main():
             c = (np.stack([t, 1 - abs(t - 0.5) * 2, 1 - t], axis=1) * 255).astype(np.uint8)
         ps.append(p)
         cs.append(c)
+        names.append(lb)
+    layers = []
+    for p1, c1, lb in zip(ps, cs, names):
+        pos = np.stack([p1[:, 0], p1[:, 2], -p1[:, 1]], axis=1).astype(np.float32)   # Z 上 → Y 上
+        col4 = np.concatenate([c1, np.full((len(c1), 1), 255, np.uint8)], axis=1)
+        layers.append((pos, col4, lb))
     p = np.concatenate(ps)
-    col = np.concatenate(cs)
-    pos = np.stack([p[:, 0], p[:, 2], -p[:, 1]], axis=1).astype(np.float32)   # Z 上 → Y 上
-    col4 = np.concatenate([col, np.full((len(col), 1), 255, np.uint8)], axis=1)
 
     path = os.path.join(out, a.name)
-    write_points_glb(path, pos, col4)
+    write_points_glb(path, layers)
     raw = os.path.getsize(path)
     if not a.no_compress:
         r = compress_glb(path)
         if r:
             print(f"圧縮 {raw / 1e6:.2f} MB → {os.path.getsize(path) / 1e6:.2f} MB（座標の刻み {r['stepMM']} mm）")
     cfg["pointcloud"] = a.name                    # common/align.js はこれがあれば点群も読む
+    if len(names) > 1:
+        cfg["cloudLayers"] = names                # node の順。common/align.js が LAS ごとのボタンを出す
+    else:
+        cfg.pop("cloudLayers", None)
     with open(os.path.join(out, "config.json"), "w", encoding="utf-8", newline="\n") as fo:
         json.dump(cfg, fo, ensure_ascii=False, indent=2)
         fo.write("\n")
@@ -138,25 +151,28 @@ def main():
     print(f"  範囲 X {lo[0]:.2f}〜{hi[0]:.2f}  Y {lo[1]:.2f}〜{hi[1]:.2f}  Z {lo[2]:.2f}〜{hi[2]:.2f}")
 
 
-def write_points_glb(path, pos, col):
-    """POINTS（mode 0）で POSITION（float）と COLOR_0（RGBA 8bit・正規化）を書く"""
-    pb, cb = pos.tobytes(), col.tobytes()
-    gl = {
-        "asset": {"version": "2.0", "generator": "las_to_points.py"},
-        "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0, "name": "pointcloud"}],
-        "meshes": [{"name": "pointcloud", "primitives": [{"attributes": {"POSITION": 0, "COLOR_0": 1}, "mode": 0}]}],
-        "buffers": [{"byteLength": len(pb) + len(cb)}],
-        "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": len(pb), "target": 34962},
-                        {"buffer": 0, "byteOffset": len(pb), "byteLength": len(cb), "target": 34962}],
-        "accessors": [
-            {"bufferView": 0, "componentType": 5126, "count": len(pos), "type": "VEC3",
+def write_points_glb(path, layers):
+    """POINTS（mode 0）で POSITION（float）と COLOR_0（RGBA 8bit・正規化）を書く。
+    layers＝[(pos, col, 名前)…]。1 つが 1 つの node（common/align.js は node の順で cloudLayers と結ぶ）"""
+    gl = {"asset": {"version": "2.0", "generator": "las_to_points.py"}, "scene": 0,
+          "scenes": [{"nodes": list(range(len(layers)))}], "nodes": [], "meshes": [],
+          "bufferViews": [], "accessors": []}
+    bn = b""
+    for k, (pos, col, lb) in enumerate(layers):
+        name = "pointcloud" if len(layers) == 1 else f"pointcloud{k}"
+        gl["nodes"].append({"mesh": k, "name": name})
+        gl["meshes"].append({"name": name, "primitives": [{"attributes": {"POSITION": 2 * k, "COLOR_0": 2 * k + 1}, "mode": 0}]})
+        for arr in (pos, col):
+            gl["bufferViews"].append({"buffer": 0, "byteOffset": len(bn), "byteLength": arr.nbytes, "target": 34962})
+            bn += arr.tobytes()
+            bn += b"\x00" * ((-len(bn)) % 4)
+        gl["accessors"] += [
+            {"bufferView": 2 * k, "componentType": 5126, "count": len(pos), "type": "VEC3",
              "min": pos.min(axis=0).tolist(), "max": pos.max(axis=0).tolist()},
-            {"bufferView": 1, "componentType": 5121, "normalized": True, "count": len(col), "type": "VEC4"},
-        ],
-    }
+            {"bufferView": 2 * k + 1, "componentType": 5121, "normalized": True, "count": len(col), "type": "VEC4"}]
+    gl["buffers"] = [{"byteLength": len(bn)}]
     js = json.dumps(gl, separators=(",", ":")).encode()
     js += b" " * ((-len(js)) % 4)
-    bn = pb + cb
     bn += b"\x00" * ((-len(bn)) % 4)
     with open(path, "wb") as fo:
         fo.write(struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(bn)))
