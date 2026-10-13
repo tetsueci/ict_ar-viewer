@@ -1222,7 +1222,7 @@ gest.addEventListener('pointerup', up);
 gest.addEventListener('pointercancel', up);
 
 // ---------- 開始・終了 ----------
-let session = null, hitSource = null, refSpace = null;
+let session = null, hitSource = null, hitPoint = null, refSpace = null;
 async function startAR() {
   const overlay = $('overlay');
   session = await navigator.xr.requestSession('immersive-ar', {
@@ -1237,9 +1237,12 @@ async function startAR() {
   await renderer.xr.setSession(session);
   refSpace = renderer.xr.getReferenceSpace();
   const viewer = await session.requestReferenceSpace('viewer');
-  hitSource = await session.requestHitTestSource({ space: viewer });
+  hitSource = await session.requestHitTestSource({ space: viewer });   // 面（既定）
+  // 面が見つかる前は特徴点（模様の点）にも十字を当てる（十字が早く出る。2026-10-15 AXIO さん）。
+  // 面が見つかれば面を使う（特徴点は高さが少し揺れる）。特徴点に対応しない端末では今まで通り面だけ
+  try { hitPoint = await session.requestHitTestSource({ space: viewer, entityTypes: ['point'] }); } catch (e) { hitPoint = null; }
   session.addEventListener('end', () => {
-    hitSource = null; session = null; lastHit = null; reticle.visible = false;
+    hitSource = hitPoint = null; session = null; lastHit = null; reticle.visible = false;
     anchor = null; anchorOffset = null; anchorWant = false;
     placed = false; aligning = true; theta = 0; s = 1; obs.clear();
     if (SIMPLE) setSlot(0);
@@ -1323,10 +1326,12 @@ renderer.setAnimationLoop((time, frame) => {
   if (frame && hitSource) {
     if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); mc?.frame(!!lastHit, aligning, placed); }
     mc?.tick(time);                              // ゲームコントローラーで重機を動かす（毎フレーム）
-    const hits = frame.getHitTestResults(hitSource);
+    let hits = frame.getHitTestResults(hitSource), byPoint = false;
+    if (!hits.length && hitPoint) { hits = frame.getHitTestResults(hitPoint); byPoint = true; }
     const had = !!lastHit;
     if (hits.length) {
       reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
+      if (byPoint) reticle.matrix.makeTranslation(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));   // 特徴点の向きは当てにならないので水平に
       reticle.matrixWorldNeedsUpdate = true;
       reticle.visible = aligning && !padMode;    // 固定中・コントローラー操作中は十字（ターゲットマーク）を出さない
       lastHit = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
