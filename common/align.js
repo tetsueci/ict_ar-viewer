@@ -383,7 +383,8 @@ renderer.domElement.style.display = 'none';
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 300);
+// 描く奥行き 1 cm〜2 km。300 m だと実寸で 300 m より遠いモデルの部分が欠けた（2026-10-15 AXIO さん「モデルの一部が消える」）
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 2000);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x777766, 2.2));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 8, 2); scene.add(sun);
 
@@ -413,7 +414,11 @@ scene.add(group);
 let modelRoot = null;
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const loadGlb = async url => (await loader.parseAsync(await fetchBuf(url), '')).scene;
-loadGlb(cfg.model).then(sc => { modelRoot = sc; group.add(modelRoot); picker?.addModel(sc); })
+loadGlb(cfg.model).then(sc => {
+  // 画面の外と判定した部分を描かない処理を切る（モデルの一部が欠けることがあったため。部品の数は少ないので重くならない）
+  sc.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
+  modelRoot = sc; group.add(modelRoot); picker?.addModel(sc);
+})
   .catch(() => { $('support').textContent = 'モデルを読めませんでした（' + cfg.model + '）'; });
 
 // 点群（任意。config.json の pointcloud。tools/las_to_points.py で作る）。
