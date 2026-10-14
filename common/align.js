@@ -416,7 +416,8 @@ const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const loadGlb = async url => (await loader.parseAsync(await fetchBuf(url), '')).scene;
 loadGlb(cfg.model).then(sc => {
   // 画面の外と判定した部分を描かない処理を切る（モデルの一部が欠けることがあったため。部品の数は少ないので重くならない）
-  sc.traverse(o => { if (o.isMesh) o.frustumCulled = false; });
+  // 点群より後に描く（点群は奥行きを書かないので、モデルはいつも点群の上に見える）
+  sc.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.renderOrder = 1; } });
   modelRoot = sc; group.add(modelRoot); picker?.addModel(sc);
 })
   .catch(() => { $('support').textContent = 'モデルを読めませんでした（' + cfg.model + '）'; });
@@ -435,7 +436,8 @@ if (cfg.pointcloud) {
     const v = new THREE.Vector3();
     sc.traverse(o => {
       if (!o.isPoints) return;
-      o.material = new THREE.PointsMaterial({ size: CLOUD_PX[cloudSize], sizeAttenuation: false, vertexColors: true });
+      // 点群は奥行きを書かない（地表面の点が地下の管路の手前に来て、モデルがあちこち切れて見えた。2026-10-15 AXIO さん「常にすべてのモデルが見えるように」）
+      o.material = new THREE.PointsMaterial({ size: CLOUD_PX[cloudSize], sizeAttenuation: false, vertexColors: true, depthWrite: false });
       const a = o.geometry.getAttribute('position');
       for (let i = 0; i < a.count; i++) {
         v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
@@ -531,6 +533,7 @@ function splitTiles(sc) {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
     if (b.c.length) geo.setAttribute('color', new THREE.Uint8BufferAttribute(b.c.map(x => Math.round(x * 255)), 3, true));
     const obj = new THREE.Points(geo, mat);
+    obj.renderOrder = 0.5;                       // 重機など（0）の後・モデル（1）の前に描く。点群は奥行きを書かないため
     g.add(obj);
     tiles.push({ obj, n, layer: b.layer, x0: b.ix * TILE, x1: (b.ix + 1) * TILE, z0: b.iz * TILE, z1: (b.iz + 1) * TILE });
   }

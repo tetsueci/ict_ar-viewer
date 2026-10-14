@@ -59,12 +59,16 @@ let ready = false;
   const url = f => new URL(f, base) + '?v=' + (cfg.version || Date.now());
   const raw = new THREE.Group();
   const jobs = [];
-  if (cfg.model) jobs.push(loader.loadAsync(url(cfg.model)).then(g => raw.add(g.scene)));
+  if (cfg.model) jobs.push(loader.loadAsync(url(cfg.model)).then(g => {
+    g.scene.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.renderOrder = 1; } });   // いつも点群の上に全部見せる
+    raw.add(g.scene);
+  }));
   if (cfg.pointcloud) jobs.push(loader.loadAsync(url(cfg.pointcloud)).then(g => {
     g.scene.traverse(o => {
       if (!o.isPoints) return;
-      o.material = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true });
-      o.geometry.setDrawRange(0, Math.ceil(o.geometry.getAttribute('position').count * PART));   // 点は混ぜてあるので前から取れば間引ける
+      o.material = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true, depthWrite: false });   // 点群でモデルが切れないように
+      o.geometry.setDrawRange(0, Math.ceil(o.geometry.getAttribute('position').count * PART));
+      o.renderOrder = 0.5;                        // 床（0）の後・モデル（1）の前に描く   // 点は混ぜてあるので前から取れば間引ける
     });
     raw.add(g.scene);
   }));
