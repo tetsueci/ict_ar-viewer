@@ -19,11 +19,13 @@ export async function initMachines(api) {
   const list = (Array.isArray(cfg.machines) ? cfg.machines : []).filter(m => m && m.id);
   if (!list.length) return;
 
-  const [{ poseBackhoe }, { poseRoughTerrainCrane }, { poseCrawlerCrane }, { ratedLoad }] = await Promise.all([
+  const [{ poseBackhoe }, { poseRoughTerrainCrane }, { poseCrawlerCrane }, { ratedLoad }, { poseBridgeChecker }, { poseBridgeChecker4 }] = await Promise.all([
     import(base + 'src/backhoe.js'), import(base + 'src/rcrane.js'),
     import(base + 'src/ccrane.js'), import(base + 'src/load.js'),
+    import(base + 'src/bchecker.js'), import(base + 'src/bchecker4.js'),   // 橋梁点検車 BT-200・BT-400（2026-10-16）
   ]);
-  const KINEMATICS = { backhoe: poseBackhoe, rough_terrain_crane: poseRoughTerrainCrane, crawler_crane: poseCrawlerCrane };
+  const KINEMATICS = { backhoe: poseBackhoe, rough_terrain_crane: poseRoughTerrainCrane, crawler_crane: poseCrawlerCrane,
+    bridge_checker: poseBridgeChecker, bridge_checker4: poseBridgeChecker4 };
   const getJson = async u => (await fetch(base + u, { cache: 'no-cache' })).json();
 
   // 色は ict_kenki-ar と同じ分け方（部品名で 3 色）
@@ -90,6 +92,10 @@ export async function initMachines(api) {
     let st;
     if (M.type === 'rough_terrain_crane') st = { outrigger: M.limits.outrigger_min, angleCabin: 0, angleBoom: 45, lengthBoom: M.limits.length_boom_min, lengthWire: 10, ratioAllow: 80 };
     else if (M.type === 'backhoe') st = { angleCabin: 0, angleBoom: 30, angleArm: -100, angleBucket: 30, bucketType: 0 };
+    // 橋梁点検車は ict_kenki-ar の index.html と同じ初めの姿勢（橋の下へ回り込んだ形）
+    else if (M.type === 'bridge_checker') st = { outrigger: 2, angleSwing: 0, angleBoom: 0, lengthBoom: 5.11, lengthPost: 9.5, lengthDeckboom: 6.0, angleDeck: 0 };
+    else if (M.type === 'bridge_checker4') st = { outrigger: 2, angleSwing: 90, angleBoom1: 5, lengthBoom1: 6.88, angleBoom2: 0, angleSwivel: 0,
+      angleBoom3: 0, lengthBoom3: 11.61, angleBoom4: -23, angleBasket: 0 };
     else st = { boomType: 0, angleCabin: 0, angleBoom: 60, lengthWire: 10, ratioAllow: 80 };
     if (def.pose && typeof def.pose === 'object') Object.assign(st, def.pose);
     t.count += 1;
@@ -296,11 +302,15 @@ export async function initMachines(api) {
     backhoe: [['angleCabin', '-LX', 50], ['angleArm', '-LY', 45], ['angleBoom', 'RY', 35], ['angleBucket', 'RX', 70]],
     rough_terrain_crane: [['angleCabin', '-LX', 40], ['lengthBoom', '-LY', 6], ['angleBoom', 'RY', 20], ['lengthWire', 'T', 6], ['outrigger', 'RX', 1]],
     crawler_crane: [['angleCabin', '-LX', 30], ['angleBoom', 'RY', 16], ['lengthWire', 'T', 6]],
+    bridge_checker4: [['angleSwing', '-LX', 20], ['angleBoom1', '-LY', 12], ['angleSwivel', 'RX', 30], ['angleBoom3', '-RY', 20],
+      ['lengthBoom3', 'T', 2], ['angleBoom2', 'BA', 15]],
   };
   const HELP = {
     backhoe: '左スティック　←→ 旋回　↑ アームを伸ばす　↓ アームを引く\n右スティック　↑ ブーム下げ　↓ ブーム上げ　← バケット抱え込み　→ バケット開く',
     rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　右スティック → アウトリガを張る　← 縮める',
     crawler_crane: '左スティック　←→ 旋回\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ',
+    bridge_checker4: '左スティック　←→ 旋回台の旋回　↑ 第1ブームを起こす　↓ 倒す\n右スティック　←→ 第2ブームの旋回　↑ 第3ブームを起こす　↓ 倒す\n'
+      + 'RT 第3ブームを伸ばす　LT 縮める　B 第2ブームを起こす　A 下げる\nほかの関節（第1ブームの長さ・第4ブーム・バスケット）は画面のスライダーで',
   };
   const help = document.createElement('div');
   help.id = 'padhelp';
@@ -374,7 +384,8 @@ export async function initMachines(api) {
     // 車体の向きで回したもの。走ったら 0.25 秒ごとに真下のモデルの面の高さへ合わせる（坂でも浮かない・潜らない）
     const dv = (btn[BTN.UP] ? 1 : 0) - (btn[BTN.DOWN] ? 1 : 0);
     if (dv && dt && u.root.visible) {
-      const h = u.heading * Math.PI / 180;
+      // 橋梁点検車は車体の前が CAD の +Y（ほかは +X）なので 90° 足す
+      const h = (u.heading + (/^bridge_checker/.test(u.M.type) ? 90 : 0)) * Math.PI / 180;
       const sp = TRAVEL * (btn[BTN.A] ? 2 : 1);   // A を押しているあいだ 2 倍
       u.root.position.x += Math.cos(h) * dv * sp * dt;
       u.root.position.z -= Math.sin(h) * dv * sp * dt;
