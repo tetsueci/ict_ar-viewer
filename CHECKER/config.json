@@ -1,6 +1,6 @@
 {
   "title": "橋梁点検車",
-  "version": "20261016075940",
+  "version": "20261016083409",
   "model": "model.glb.enc",
   "coords": "図面の座標（X・Y・Z、m）。測量座標ではない",
   "offline": true,
@@ -23,13 +23,16 @@
         "lengthBoom3": 8.61,
         "angleBoom4": -23,
         "angleBasket": 0
+      },
+      "colors": {
+        "boom": "#19469b"
       }
     }
   ],
   "enc": {
     "kdf": "PBKDF2-SHA256",
     "iter": 600000,
-    "salt": "qjSw7QTnyHU9mWvOoMutfA==",
-    "secret": "+3XIAdyEmOpgHwEOkSsmCz/8h5sgbKORudBpsCPMbrHFyIEkxVt4RGXCtGlhgPXNQgXmvPfbWp2Ln4o9a3+itg3qaMiRXHo2Xe3yS3kuWFzzFlK524xDpWoNgbzFOcmYy4LEweHmmws5UQsabgvvKIYXC5slXQA2FYjhEb6+RtHbca8K5vzOFRwUJ6kAHEWP+1vaPuCQyXq610ivmOOfLVEpOCElSG3gQxneu4LEBCB/ATU8r3Jdja+thYS+Y0WO7/s7nK3QnbQRAyyYBJuVll0g8lXvxyIFdVCqdb1V7WaoUBTZ/6sLTNrv+4v0wfuZZ3IZ4W3DiKIWGbBYPAaD8NeeO3oLuzIQiQSH3yyXSyQsq5Mr5gtd6hNg2Lgc25z5qkSe7t+n6nm/QwhVP753vmnIFkGD0Q=="
+    "salt": "8hY5OquOjtWZ603jAw4Zfg==",
+    "secret": "+TKfe38Ekj1C7pQuhiE256bI268NQ1Qs/uvsQCpXY5MCpZq+l2XKOVtLxyaffmS9UE6WEnypO88xl4UjXwup78P66DhOC5vU7t0oYuy6iiOJdpzZ46qyYJyJuqMrFg3Wi1g9HWRBsXB4SAcTw4ikUtO6Qo6v2AXZouwh6/kJcI9tQnINF7ucIjDCPogyCSROwmhGpqeaBptbLn1SI8z9+CXOyKwtkLLYkPwILkfctGBQ/sWcCmIrRMdMZi2zl0CCb3SZIZ81MoOta14xKz/JaiqZXEAwjC31THfl48t53TSEo6zxZuOQ1nFf4OB9DIt8NIw3TXf/wvYhZ5TV0qjfM3lYJyY8lngFgBhRBLtoqoNdt4hvB8+F2OCzpY293ds+0mkKsswNGcpgAYrr8x76GoVWSGGopw=="
   }
 }
