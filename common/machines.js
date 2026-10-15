@@ -28,11 +28,27 @@ export async function initMachines(api) {
     bridge_checker: poseBridgeChecker, bridge_checker4: poseBridgeChecker4 };
   const getJson = async u => (await fetch(base + u, { cache: 'no-cache' })).json();
 
-  // 色は ict_kenki-ar と同じ分け方（部品名で 3 色）
-  const CYAN = new THREE.MeshStandardMaterial({ color: 0x18c6c6, roughness: .7, metalness: .15 });
-  const GREY = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: .8, metalness: .1 });
-  const DARK = new THREE.MeshStandardMaterial({ color: 0x4e545c, roughness: .85, metalness: .1 });
-  const matOf = n => (/^(body|outrigger|plate|foot)/.test(n) ? DARK : /^(cabin|boom\d|jib)/.test(n) ? CYAN : GREY);
+  // 色は ict_kenki-ar と同じ分け方（部品名で 3 色）。
+  // ★その現場だけ色を変えたいときは config.json の machines に "colors" を書く（2026-10-16。書かなければ今までどおり）
+  //   { "id": "TADANO_BT400", "colors": { "boom": "#19469b" } }
+  //   キーは body（車体・アウトリガ）/ boom（ブーム・キャビン）/ other（旋回台・バスケットなど）
+  const COL0 = { body: 0x4e545c, boom: 0x18c6c6, other: 0x9aa3ad };
+  const PBR = { body: [.85, .1], boom: [.7, .15], other: [.8, .1] };
+  const partKey = n => (/^(body|outrigger|plate|foot)/.test(n) ? 'body' : /^(cabin|boom\d|jib)/.test(n) ? 'boom' : 'other');
+  const matSets = new Map();                    // 色の組ごとに材質を 1 つだけ作って使い回す
+  function matsFor(colors) {
+    const key = JSON.stringify(colors || null);
+    if (!matSets.has(key)) {
+      const set = {};
+      for (const k of Object.keys(COL0)) {
+        const c = (colors && colors[k] != null) ? colors[k] : COL0[k];
+        set[k] = new THREE.MeshStandardMaterial({ color: new THREE.Color(c), roughness: PBR[k][0], metalness: PBR[k][1] });
+      }
+      matSets.set(key, set);
+    }
+    return matSets.get(key);
+  }
+  const colorsOf = id => (list.find(d => d.id === id && d.colors) || {}).colors || null;
   const COPIES = { 'outrigger': 'outrigger', 'outrigger-foot': 'foot', 'outrigger-base': 'plate' };
 
   // CAD（Z 上・mm）→ 現場の glTF（Y 上・m）。x はそのまま、y＝CAD の z、z＝−CAD の y（align.js の siteToGl と同じ向き）
@@ -48,6 +64,7 @@ export async function initMachines(api) {
     let LOAD = null;
     if (M.load) try { LOAD = await getJson(M.load); } catch (e) { LOAD = null; }
     const parts = [];
+    const mat = matsFor(colorsOf(id));          // 現場で色を指定していなければ今までどおりの 3 色
     if (M.models) {
       const pj = await getJson(M.models + '_parts.json');
       await Promise.all(Object.entries(pj).map(async ([name, info]) => {
@@ -57,7 +74,7 @@ export async function initMachines(api) {
         g.scene.traverse(c => {
           if (!c.isMesh) return;
           if (c.material && c.material.transparent) { c.material.depthWrite = false; c.material.userData.glass = true; c.renderOrder = 2; return; }
-          c.material = matOf(name);
+          c.material = mat[partKey(name)];
         });
         parts.push([name, g.scene]);
       }));
