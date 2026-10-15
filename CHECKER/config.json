@@ -1,0 +1,35 @@
+{
+  "title": "橋梁点検車",
+  "version": "20261016002737",
+  "model": "model.glb.enc",
+  "coords": "図面の座標（X・Y・Z、m）。測量座標ではない",
+  "offline": true,
+  "machines": [
+    {
+      "id": "TADANO_BT400",
+      "name": "BT-400",
+      "x": 55.0,
+      "y": 22.75,
+      "z": 7.93,
+      "heading": -90.0,
+      "pose": {
+        "outrigger": 2,
+        "angleSwing": 90,
+        "angleBoom1": 5,
+        "lengthBoom1": 6.88,
+        "angleBoom2": 0,
+        "angleSwivel": 0,
+        "angleBoom3": 0,
+        "lengthBoom3": 8.61,
+        "angleBoom4": -23,
+        "angleBasket": 0
+      }
+    }
+  ],
+  "enc": {
+    "kdf": "PBKDF2-SHA256",
+    "iter": 600000,
+    "salt": "VYbG90G17hTMZ0TUdBENgQ==",
+    "secret": "5Pn83BP1tVQEwtXw1NvZBvGPhisehBC+lsPde40BQlVl8UmW3DCIj1Ot/rBZc09sPz1eTwBgakqj4cqtupT/DRQLwUzFHziFs/97+6hALBXFtWqh73tv4ieAA88wOm8PCxOeyRtF2WLn8th+p3TatHM3VxR4RrutuumpkjilRtH9m49YS7Fp8MoxloCv2L9mGS6n4NQjX/cjVQAjjIFlxPG/9uBmDRYOllDp6SHiQ1PfrX+MZcDMVWmbCmD9EjWevkJuztfCO/frYwNQi4rSZ8iVGt8B1rm4iEwFvoSSaBqYpGsa6Zil8U9dwoCG1ySw8Z8BqmKQayOPi27P2wou4S72M1V6MhdUoShruSGEkGsaZ4L24oiH/A9MaCIH+tZqDuaxnfgANgCxqZEfYNEWAv6x1scheA=="
+  }
+}

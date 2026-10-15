@@ -1,0 +1,10 @@
+{
+  "name": "橋梁点検車 AR",
+  "short_name": "橋梁点検車",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1f6feb",
+  "icons": [{ "src": "../common/ar-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
