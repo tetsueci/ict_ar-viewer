@@ -87,6 +87,7 @@ document.body.insertAdjacentHTML('afterbegin', `
     スマホのカメラとセンサーで合わせるため、数十 cm 以上ずれることがあります。
     施工・測量・出来形の判断には使わず、必ず設計図面と現地の測量で確かめてください。</p>
   <button class="start" id="start" disabled>AR を始める</button>
+  <button class="start sub" id="viewer" type="button" hidden>3D で見る（AR なし）</button>
   <div id="support"></div>
   <p class="muted">Android の Chrome（ARCore 対応機）と iPhone で動きます。</p>
 </div>
@@ -418,7 +419,7 @@ loadGlb(cfg.model).then(sc => {
   // 画面の外と判定した部分を描かない処理を切る（モデルの一部が欠けることがあったため。部品の数は少ないので重くならない）
   // 点群より後に描く（点群は奥行きを書かないので、モデルはいつも点群の上に見える）
   sc.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.renderOrder = 1; } });
-  modelRoot = sc; group.add(modelRoot); picker?.addModel(sc);
+  modelRoot = sc; group.add(modelRoot); picker?.addModel(sc); viewReady();
 })
   .catch(() => { $('support').textContent = 'モデルを読めませんでした（' + cfg.model + '）'; });
 
@@ -447,7 +448,7 @@ if (cfg.pointcloud) {
         c.push(v.x, v.y, v.z);
       }
     });
-    cloud = splitTiles(sc); group.add(cloud);
+    cloud = splitTiles(sc); group.add(cloud); viewReady();
     $('support').textContent = '';
     if (isStart(0) && AT === 'c') {               // QR（?at=c）：点群の真ん中の地面を始める場所にする
       const v = cloudCenterGround();
@@ -1261,6 +1262,45 @@ async function startAR() {
   apply();
 }
 $('start').onclick = () => startAR().catch(e => { $('support').textContent = 'AR を始められませんでした：' + e.message; });
+
+// ---------- 3D で見る（AR なし。2026-10-15 AXIO さん） ----------
+// AR が使えないスマホ・PC でも、モデルと点群をふつうの画面で見られる（位置合わせはしない）。
+// AR と同じ場面（group）を画面いっぱいに出し、1 本指で回す・2 本指で拡大と移動（OrbitControls）。暗号化した現場も開いたあとなら見られる
+function viewReady() { const b = document.getElementById('viewer'); if (b) b.hidden = !(modelRoot || cloud); }
+let viewCtl = null, viewKeep = null, viewClose = null;
+async function openViewer() {
+  if (session || viewCtl) return;
+  const { OrbitControls } = await import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js/+esm');
+  viewKeep = { m: group.matrix.clone(), vis: group.visible, pm: ptMarks.visible };
+  group.matrix.identity(); group.matrixWorldNeedsUpdate = true; group.visible = true; ptMarks.visible = false;
+  reticle.visible = false;
+  const box = new THREE.Box3();
+  if (modelRoot) box.expandByObject(modelRoot);
+  if (cloud) box.expandByObject(cloud);
+  const c = box.getCenter(new THREE.Vector3()), r = Math.max(1, box.getSize(new THREE.Vector3()).length() / 2);
+  const el = renderer.domElement;
+  el.style.cssText = 'display:block;position:fixed;inset:0;z-index:60;background:#cfd8e3;touch-action:none';
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  camera.position.set(c.x + r * 0.5, c.y + r * 0.8, c.z + r * 1.1);
+  viewCtl = new OrbitControls(camera, el);
+  viewCtl.target.copy(c); viewCtl.maxDistance = r * 6; viewCtl.update();
+  viewClose = document.createElement('button');
+  viewClose.textContent = '戻る';
+  viewClose.style.cssText = 'position:fixed;right:16px;top:16px;z-index:61;padding:10px 18px;border:0;border-radius:999px;'
+    + 'background:rgba(0,0,0,.65);color:#fff;font:inherit;font-size:15px;font-weight:700';
+  viewClose.onclick = closeViewer;
+  document.body.appendChild(viewClose);
+}
+function closeViewer() {
+  if (!viewCtl) return;
+  viewCtl.dispose(); viewCtl = null;
+  viewClose.remove(); viewClose = null;
+  group.matrix.copy(viewKeep.m); group.matrixWorldNeedsUpdate = true; group.visible = viewKeep.vis; ptMarks.visible = viewKeep.pm;
+  renderer.domElement.style.cssText = 'display:none';
+}
+$('viewer').onclick = () => openViewer().catch(e => { $('support').textContent = '3D で見られませんでした：' + e.message; });
+viewReady();
 
 // AR を始めるボタン：simple は始める場所を選んでから
 function updateStart() {
