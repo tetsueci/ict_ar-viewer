@@ -1302,6 +1302,37 @@ function closeViewer() {
 $('viewer').onclick = () => openViewer().catch(e => { $('support').textContent = '3D で見られませんでした：' + e.message; });
 viewReady();
 
+// ---------- 電波が無くても開けるように（config.json の "offline": true。Android の Chrome。2026-10-15 AXIO さん） ----------
+// フォルダの sw.js（中身は common/sw-core.js）を登録する。電波のある所で 1 回開き（暗号化した現場はパスワードで開き）、
+// 読み終えると、ページ・three.js・モデル・点群・重機をスマホに保存する。そのあとは電波が無くても同じ URL（ホーム画面のアイコン）から開ける。
+// 電波があるときはいつもネットから読むので、新しい版に入れ替わる。iPhone は Variant Launch が電波を要るので対象外
+if (cfg.offline && 'serviceWorker' in navigator && !IS_IOS) {
+  const m = document.createElement('link');
+  m.rel = 'manifest'; m.href = 'manifest.webmanifest';
+  document.head.appendChild(m);
+  const note = document.createElement('p');
+  note.className = 'muted'; note.id = 'offnote';
+  $('support').after(note);
+  (async () => {
+    await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
+    if (!navigator.serviceWorker.controller)       // 初めて開いたときは、登録が終わってから受け持たせる
+      await new Promise(ok => navigator.serviceWorker.addEventListener('controllerchange', ok, { once: true }));
+    if (!navigator.onLine) { note.textContent = '電波が無いので、保存してある版で開いています'; return; }
+    note.textContent = '電波が無くても開けるように保存しています…（モデルと点群を読み終えるまで待ってください）';
+    for (let i = 0; i < 1800 && !(modelRoot && (cloud || !cfg.pointcloud)); i++) await new Promise(ok => setTimeout(ok, 1000));
+    await new Promise(ok => setTimeout(ok, 3000));  // 重機の部品など、あとから読むもの
+    await import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js/+esm').catch(() => {});   // 「3D で見る」の部品
+    // 初めて開いたときは、読んだあとで service worker が受け持ったので、読んだものをもう一度読ませて保存させる
+    const urls = new Set([location.href.split('#')[0], ...performance.getEntriesByType('resource').map(e => e.name)]);
+    let ng = 0;
+    await Promise.all([...urls].filter(u => u.startsWith(location.origin) || u.startsWith('https://cdn.jsdelivr.net/'))
+      .map(u => fetch(u).then(r => { if (!r.ok) ng++; }).catch(() => { ng++; })));
+    note.textContent = ng ? `保存できなかったものがあります（${ng} 件）。電波のある所で開き直してください`
+      : '電波が無くても開けるように保存しました（メニューの「ホーム画面に追加」で開きやすくなります）';
+  })().catch(e => { note.textContent = '保存できませんでした：' + e.message; });
+}
+
 // AR を始めるボタン：simple は始める場所を選んでから
 function updateStart() {
   if (!xrOK) return;

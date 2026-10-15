@@ -5,6 +5,7 @@
   "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
   "pointcloud": "pointcloud.glb.enc",
   "start": "pick",
+  "offline": true,
   "machines": [
     {
       "id": "KATO_SR250Rf2"
