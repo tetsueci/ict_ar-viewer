@@ -1,6 +1,6 @@
 {
   "title": "橋梁点検車",
-  "version": "20261016002737",
+  "version": "20261016075940",
   "model": "model.glb.enc",
   "coords": "図面の座標（X・Y・Z、m）。測量座標ではない",
   "offline": true,
@@ -10,10 +10,10 @@
       "name": "BT-400",
       "x": 55.0,
       "y": 22.75,
-      "z": 7.93,
+      "z": 7.943,
       "heading": -90.0,
       "pose": {
-        "outrigger": 2,
+        "outrigger": 0,
         "angleSwing": 90,
         "angleBoom1": 5,
         "lengthBoom1": 6.88,
@@ -29,7 +29,7 @@
   "enc": {
     "kdf": "PBKDF2-SHA256",
     "iter": 600000,
-    "salt": "VYbG90G17hTMZ0TUdBENgQ==",
-    "secret": "5Pn83BP1tVQEwtXw1NvZBvGPhisehBC+lsPde40BQlVl8UmW3DCIj1Ot/rBZc09sPz1eTwBgakqj4cqtupT/DRQLwUzFHziFs/97+6hALBXFtWqh73tv4ieAA88wOm8PCxOeyRtF2WLn8th+p3TatHM3VxR4RrutuumpkjilRtH9m49YS7Fp8MoxloCv2L9mGS6n4NQjX/cjVQAjjIFlxPG/9uBmDRYOllDp6SHiQ1PfrX+MZcDMVWmbCmD9EjWevkJuztfCO/frYwNQi4rSZ8iVGt8B1rm4iEwFvoSSaBqYpGsa6Zil8U9dwoCG1ySw8Z8BqmKQayOPi27P2wou4S72M1V6MhdUoShruSGEkGsaZ4L24oiH/A9MaCIH+tZqDuaxnfgANgCxqZEfYNEWAv6x1scheA=="
+    "salt": "qjSw7QTnyHU9mWvOoMutfA==",
+    "secret": "+3XIAdyEmOpgHwEOkSsmCz/8h5sgbKORudBpsCPMbrHFyIEkxVt4RGXCtGlhgPXNQgXmvPfbWp2Ln4o9a3+itg3qaMiRXHo2Xe3yS3kuWFzzFlK524xDpWoNgbzFOcmYy4LEweHmmws5UQsabgvvKIYXC5slXQA2FYjhEb6+RtHbca8K5vzOFRwUJ6kAHEWP+1vaPuCQyXq610ivmOOfLVEpOCElSG3gQxneu4LEBCB/ATU8r3Jdja+thYS+Y0WO7/s7nK3QnbQRAyyYBJuVll0g8lXvxyIFdVCqdb1V7WaoUBTZ/6sLTNrv+4v0wfuZZ3IZ4W3DiKIWGbBYPAaD8NeeO3oLuzIQiQSH3yyXSyQsq5Mr5gtd6hNg2Lgc25z5qkSe7t+n6nm/QwhVP753vmnIFkGD0Q=="
   }
 }
