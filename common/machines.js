@@ -183,6 +183,7 @@ export async function initMachines(api) {
     </div>
     <div class="row mcbody"><button id="mcadd">＋同じ重機</button><button id="mcdel">この重機を消す</button></div>
     <div class="row mcbody"><select id="mcctl"></select><input id="mcval" type="range"><span id="mcnum" class="mcnum"></span></div>
+    <div class="row mcbody"><button id="mcride">運転席に乗る</button></div>
     <div class="row mcbody"><span id="mcread" class="mcread"></span></div>`;
   panel.insertBefore(wrap, lockRow);
   const $ = id => document.getElementById(id);
@@ -244,6 +245,20 @@ export async function initMachines(api) {
     if (placing) setPlace(false);
     fillUnits(); fillControls();
   };
+  // 運転席に乗る・降りる（コントローラーの X と同じ。コントローラーが無くても乗り降りできるように・2026-10-16）
+  // ★board はここで宣言する（下の「運転席に乗る」の節より先に、このボタンと rideLabel が読むため）
+  let board = null;                               // { u, p0: スマホの位置, yaw0: 正面にした向き, recenter }
+  let xrAt = 0;                                   // AR のフレームが回っていた時刻（乗れるのは AR の中だけ）
+  function rideLabel() {
+    $('mcride').textContent = board ? '運転席から降りる' : '運転席に乗る';
+    $('mcride').classList.toggle('sel', !!board);
+  }
+  $('mcride').onclick = () => {
+    if (board) { boardOff(); return; }
+    if (!unit().root.visible) { $('mcread').textContent = 'まず「重機を置く」で置いてください'; return; }
+    if (performance.now() - xrAt > 2000) { $('mcread').textContent = '運転席に乗れるのは AR の中だけです'; return; }
+    boardOn(unit());
+  };
   $('mcctl').onchange = () => { ctl = +$('mcctl').value; pickControl(); };
   $('mcval').oninput = () => {
     const u = unit(), c = u.controls[ctl];
@@ -303,7 +318,7 @@ export async function initMachines(api) {
     $('mctgl').textContent = open ? '重機 ▼' : '重機 ▲';
   }
   $('mctgl').onclick = () => setOpen(!open);
-  fillUnits(); fillControls(); setOpen(false);
+  fillUnits(); fillControls(); setOpen(false); rideLabel();
 
   // ---------- ゲームコントローラーで動かす（2026-10-08） ----------
   // 動かすのは重機の一覧で選んでいる台。バックホウは実機の ISO 方式：
@@ -322,12 +337,19 @@ export async function initMachines(api) {
     bridge_checker4: [['angleSwing', '-LX', 20], ['angleBoom1', '-LY', 12], ['angleSwivel', 'RX', 30], ['angleBoom3', '-RY', 20],
       ['lengthBoom3', 'T', 2], ['angleBoom2', 'BA', 15]],
   };
+  // ★関節が多くてスティックが足りない重機の 2 段目（LB を押しているあいだ。2026-10-16）。
+  //   2 段目のある種類では、LB は「押しながら」が 2 段目で、スティックを使わずに離したときだけ台の切り替えになる
+  const MAP2 = {
+    bridge_checker4: [['lengthBoom1', '-LY', 1], ['angleBoom4', '-RY', 20], ['angleBasket', 'RX', 30]],
+  };
   const HELP = {
     backhoe: '左スティック　←→ 旋回　↑ アームを伸ばす　↓ アームを引く\n右スティック　↑ ブーム下げ　↓ ブーム上げ　← バケット抱え込み　→ バケット開く',
     rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　右スティック → アウトリガを張る　← 縮める',
     crawler_crane: '左スティック　←→ 旋回\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ',
     bridge_checker4: '左スティック　←→ 旋回台の旋回　↑ 第1ブームを起こす　↓ 倒す\n右スティック　←→ 第2ブームの旋回　↑ 第3ブームを起こす　↓ 倒す\n'
-      + 'RT 第3ブームを伸ばす　LT 縮める　B 第2ブームを起こす　A 下げる\nほかの関節（第1ブームの長さ・第4ブーム・バスケット）は画面のスライダーで',
+      + 'RT 第3ブームを伸ばす　LT 縮める　B 第2ブームを起こす　A 下げる\n'
+      + '★LB を押しながら　左スティック ↑ 第1ブームを伸ばす ↓ 縮める　右スティック ↑ 第4ブームを起こす ↓ 倒す　←→ バスケットの首振り\n'
+      + 'アウトリガの張出だけは画面のスライダーで',
   };
   const help = document.createElement('div');
   help.id = 'padhelp';
@@ -336,7 +358,7 @@ export async function initMachines(api) {
   const catcher = document.createElement('div');   // コントローラー操作中に画面をタップしたら、ボタンの画面へ戻す
   catcher.id = 'padcatch';
   document.getElementById('overlay').appendChild(catcher);
-  let padOn = false, padT = 0, prevBtn = [], snapAt = 0, toastUntil = 0;
+  let padOn = false, padT = 0, prevBtn = [], snapAt = 0, toastUntil = 0, lbUsed = false;
   const toast = document.createElement('div');      // 切り替えたとき、どの台を動かしているかを少しのあいだ出す
   toast.id = 'padtoast'; toast.hidden = true;
   document.getElementById('overlay').appendChild(toast);
@@ -364,7 +386,9 @@ export async function initMachines(api) {
   }
   function helpText(u) {
     return `【コントローラー】${u.name}\n` + (HELP[u.M.type] || '')
-      + '\n十字キー ↑↓ 向いている方へ走る（前・後ろ。A を押しながらで 2 倍）　←→ 車体の向き\nLB／RB 動かす重機を切り替え（ほかの台はそのまま）\nX 運転席に乗る・降りる　Y いまのスマホの向きを正面にする（乗っているとき）\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
+      + '\n十字キー ↑↓ 向いている方へ走る（前・後ろ。A を押しながらで 2 倍）　←→ 車体の向き\n'
+      + (MAP2[u.M.type] ? 'LB（押して離す）／RB' : 'LB／RB') + ' 動かす重機を切り替え（ほかの台はそのまま）'
+      + '\nX 運転席に乗る・降りる　Y いまのスマホの向きを正面にする（乗っているとき）\nSELECT・START を押しているあいだ この説明　画面をタップ ボタンに戻る';
   }
   function tick(time) {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
@@ -377,8 +401,12 @@ export async function initMachines(api) {
     const used = btn.some(Boolean) || g.axes.some(a => Math.abs(a) > 0.3);
     if (used) setPad(true);
     if (!padOn) { prevBtn = btn; return; }
-    // 重機の切り替え（LB／RB）
-    if (edge(BTN.LB) || edge(BTN.RB)) {
+    // 重機の切り替え（LB／RB）。2 段目のある重機では、LB は「押しているあいだ 2 段目」なので、
+    // スティックを動かさずに離したときだけ切り替えになる
+    const alt = MAP2[unit().M.type] || null;
+    const lbTap = alt ? (!btn[BTN.LB] && prevBtn[BTN.LB] && !lbUsed) : edge(BTN.LB);
+    if (!btn[BTN.LB]) lbUsed = false;
+    if (lbTap || edge(BTN.RB)) {
       cur = (cur + (edge(BTN.RB) ? 1 : units.length - 1)) % units.length;
       fillUnits(); fillControls();
       if (board) { if (unit().root.visible) boardOn(unit()); else boardOff(); }
@@ -408,8 +436,10 @@ export async function initMachines(api) {
       u.root.position.z -= Math.sin(h) * dv * sp * dt;
       if (time - snapAt > 250) { snapAt = time; u.snap = 'near'; snapPending(); }
     }
-    for (const [key, inp, rate] of MAP[u.M.type] || []) {
+    const layer = (alt && btn[BTN.LB]) ? alt : (MAP[u.M.type] || []);
+    for (const [key, inp, rate] of layer) {
       const v = axis(g, inp);
+      if (v && layer === alt) lbUsed = true;      // 2 段目を使ったら、LB を離しても台の切り替えにしない
       if (!v || !dt) continue;
       const c = u.controls.find(x => x.key === key);
       if (!c) continue;
@@ -427,7 +457,7 @@ export async function initMachines(api) {
   // 旋回・走行すると視点も一緒に動く。スマホを動かすと、車体は止まったまま見回せる。Y で「いまのスマホの向き」を正面にする。
   // ★目の位置・正面は ict_kenki-ar の machines/*.json の "eye"（{ part, point, forward, up }。その部品のブロックの座標・mm。EYE.md）。
   //   eye が無い重機だけ、仮に「キャビンの外接箱の中央・底から 1.2 m 上・正面は +X」。キャビンの透け方は "cabinOpacity"（無ければ 15%）
-  let board = null;                               // { u, p0: スマホの位置, yaw0: 正面にした向き, recenter }
+  // （board は操作盤の「運転席に乗る」より前で宣言してある）
   const sky = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 16), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
     uniforms: {},
@@ -475,6 +505,7 @@ export async function initMachines(api) {
     cabinSee(u, true);
     sky.visible = true;
     setBoarded(true);
+    rideLabel();
   }
   function boardOff() {
     if (!board) return;
@@ -482,6 +513,7 @@ export async function initMachines(api) {
     board = null;
     sky.visible = false;
     setBoarded(false);
+    rideLabel();
   }
   const mA = new THREE.Matrix4(), vE = new THREE.Vector3(), vF = new THREE.Vector3(), vO = new THREE.Vector3(), qV = new THREE.Quaternion();
   // align.js が毎フレーム呼ぶ（乗っているあいだ）
@@ -516,6 +548,7 @@ export async function initMachines(api) {
   // align.js が呼ぶ：0.5 秒ごと（現場モデルを置いたあとだけ「重機を置く」を押せる）と、置くあいだのタップ
   return {
     frame(hasHit, aligning, placed) {
+      xrAt = performance.now();                   // AR の中にいる印（「運転席に乗る」はここでだけ効く）
       const b = $('mchere'), off = !placed;
       if (b.disabled !== off) b.disabled = off;
       if (off && placing) setPlace(false);
