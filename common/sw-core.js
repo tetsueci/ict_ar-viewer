@@ -16,9 +16,23 @@ self.addEventListener('fetch', e => {
   e.respondWith(handle(r));
 });
 
+// ★?v= には 2 種類ある（2026-10-16）。
+//   ・common/ のもの … ページが読むたびに付ける番号。外さないと毎回別物になって保存が効かない
+//   ・現場のファイル（model.glb.enc・plan.png・点群）… config.json の "version"。
+//     ★こちらは残す。外すと、新しい版を出しても「6 秒待っても来ないから保存したものを返す」で
+//     古いモデルが出てしまい、更新したのに変わらないように見える（実際に起きた）
 function keyOf(url) {
   const u = new URL(url);
-  if (u.origin === self.location.origin) u.search = '';
+  if (u.origin === self.location.origin && u.pathname.includes('/common/')) u.search = '';
+  u.hash = '';
+  return u.href;
+}
+
+// 版が変わる前の保存（?v= を外した名前）。電波が無いときだけ、最後の頼みとして見る
+function oldKeyOf(url) {
+  const u = new URL(url);
+  if (u.origin !== self.location.origin || !u.search) return null;
+  u.search = '';
   u.hash = '';
   return u.href;
 }
@@ -31,14 +45,15 @@ async function handle(r) {
     return res;
   });
   net.catch(() => {});                          // 保存したものを返したあとで落ちても騒がない
-  // 遅いときは保存したものを先に返す（保存が無ければネットを待つ）
+  // 遅いときは保存したものを先に返す（保存が無ければネットを待つ）。
+  // 版が上がったファイルはこの名前では見つからないので、ここでは古いものを返さずネットを待つ
   const slow = new Promise(ok => setTimeout(ok, WAIT)).then(() => cache.match(key));
   try {
     const first = await Promise.race([net, slow]);
     if (first) return first;
     return await net;
   } catch (err) {
-    const hit = await cache.match(key);
+    const hit = await cache.match(key) || await cache.match(oldKeyOf(r.url) || key);
     if (hit) return hit;
     throw err;
   }
