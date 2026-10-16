@@ -6,7 +6,7 @@
 // ・.laz は laz-perf（WebAssembly・jsDelivr）でほどく。座標は平面直角座標のまま入っていて、ここで origin を引く
 // ・作るのは tools/las_to_ept.py
 const LAZPERF = 'https://cdn.jsdelivr.net/npm/laz-perf@0.0.6/lib/web/';
-const BUDGET = 1500000;                         // 描く点の上限（江別は 233 万点で熱くなり落ちた。93 万点は動いた）
+const BUDGET = 1500000;                         // 描く点の上限（ある現場で 233 万点を描いたら熱くなって落ちた。93 万点は動いた）
 const ANGLE = 0.003;                            // 点の間隔がこの角度（ラジアン・約 2 画素）より粗く見えたら細かい段を足す
 const PARALLEL = 4;                             // 同時に読む数
 
