@@ -1,6 +1,6 @@
 {
   "title": "橋梁点検車",
-  "version": "20261016100318",
+  "version": "20261016141616",
   "model": "model.glb.enc",
   "coords": "図面の座標（X・Y・Z、m）。測量座標ではない",
   "offline": true,
@@ -9,10 +9,13 @@
       "id": "TADANO_BT400",
       "name": "BT-400",
       "x": 55.0,
-      "y": 22.7,
-      "z": 7.942,
+      "y": 22.75,
+      "z": 7.941,
       "heading": -90.0,
       "pose": {
+        "outrigger": 2,
+        "outriggerL": 2,
+        "outriggerR": 0,
         "angleSwing": 90,
         "angleBoom1": 5,
         "lengthBoom1": 6.88,
@@ -21,9 +24,7 @@
         "angleBoom3": 0,
         "lengthBoom3": 8.61,
         "angleBoom4": -23,
-        "angleBasket": 0,
-        "outriggerL": 2,
-        "outriggerR": 0
+        "angleBasket": 0
       },
       "colors": {
         "boom": "#19469b"
@@ -33,7 +34,7 @@
   "enc": {
     "kdf": "PBKDF2-SHA256",
     "iter": 600000,
-    "salt": "uV/xicWr16m+3JomLuprAg==",
-    "secret": "xkct9FapFPR9ZX5KtvsDtG5Y5srprEv9yHFrTEQF4KkHO+YTXDpa6Gu40vaIvDpd/c7yvRyrC7phZLDv34b4aoDd7w/O8pB8babFbb+ifI7+MoB0YyWQFEATVXyu2uY95nw8aUk0bXGKvp7V8Fvbm4xqZ5LwcRoZLaXY6MbJLe9EvQyGmOD8nwKER+BexT/aoN1E9kwhVxmbmNbL/enVBwUMZCo194z2zilRHmKrdBmdif7w1KxhZ4RLjo+qBq+u4L0BmbXqwinAml8FyyJAUin0SxdMTLmPf0euNJNkyOwLGVghDhXmx6Vk/KIdGr/X7Gg192bHwf8/y4hs5MaApqxCD/5zrHPygonxReoZPnIyfbdCY/VhiavetKV9uHTA+gLz8HHsVdQgZYGtt8dq1bfGtpbdaOIV4IkDEmRrz6GY0ng8uH4bvhOOdcg+SfjxdB1HgP+35FSuLOK7Yrc0pfE/Xd+2OrPdYy/1FW7/D4YlUjbUsyCEHvg5xyT9Tro4zTiiYg=="
+    "salt": "t0SEKZx0XIbtX+KxFNe+mQ==",
+    "secret": "Cc8iC0+TQpvV/5a1eViu+/DUgc23DAmClQ9qdUwtQ2N4B7c0Bx00zimeEmq2sTFwq2iL5AkYGYbOBNOAt4T4XQt2ztbN/+hNcilmOclhdWm+ozhRiIrkKkb+Zw5FG5dmNcnLvFicOg4JyBOeIYFXml8MK6BKsNosb7qm9gVr5R5qbc0B4RSwScGIv1xgp3mfVySpy+GZxTHwa4FNobWuj5/g+xdDfGVOe+AIKClW+CAYLM1lXeV1KpYao0lqVhlkMhCRd3ZkGONi8h7BdQkzMeEzccdv64NO7gfgKUaXYoMPj70+iu2SWrGFxNrokzmlCtFlstz7fOmGQm/1qTDMroA7QaBJbDpMwnL0o0qXY5ILrTLhfbHfCyZPNu2k9UGXv8csoUZz2LtUvOa/oBPgxUHzgAdUFlpLNLLR1qEnuc08SE00cHTk6+BZo9iL+e5+yVRxazY+2X3HIJZq1yYqsRLKH0918tbBL9+AUEMMMn1m1jGbagfKpIjtyQgFr0tc3p0sIg=="
   }
 }
