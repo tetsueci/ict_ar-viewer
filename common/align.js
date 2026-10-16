@@ -1416,7 +1416,11 @@ if (AT) {
     $('start').click();
   };
 }
-if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false)) {
+// iPhone の Chrome・Edge・Firefox など（Safari 以外）では Variant Launch が「Safari で開いてください」と出して AR を始められない（2026-10-16 AXIO さん実機）
+const IOS_OTHER = IS_IOS && /CriOS|FxiOS|EdgiOS|OPiOS|GSA\//.test(navigator.userAgent);
+if (IOS_OTHER) {
+  $('support').innerHTML = '<b>iPhone で AR を始めるには、このページを Safari で開いてください。</b><br>（「3D で見る」はこのままでも使えます）';
+} else if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false)) {
   xrOK = true; updateStart();
 } else if (!launchReady(window.__vl)) {
   $('support').innerHTML = IS_IOS && VL_KEY
