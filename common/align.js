@@ -33,7 +33,7 @@ document.body.insertAdjacentHTML('afterbegin', `
       <li>「<b>P1 を選ぶ</b>」が黄色の枠のときに点群をタップすると、そこが P1（青い旗）になる。
         十字を現地の同じ場所に当てて「① P1 をここ」</li>
       <li>「<b>P2 を選ぶ</b>」に切り替わるので、P1 から離れた所をタップして P2（橙の旗）。十字を現地の同じ場所に当てて「② P2 をここ」</li>
-      <li>合ったら「固定する」。選び直すときは「P1 を選ぶ」か「P2 を選ぶ」を押してから点群をタップし、① か ② を押し直す</li>
+      <li>合ったら左下の「◀ 閉じる」で固定。選び直すときは「P1 を選ぶ」か「P2 を選ぶ」を押してから点群をタップし、① か ② を押し直す</li>
     </ol>
   </div>
 
@@ -57,7 +57,7 @@ document.body.insertAdjacentHTML('afterbegin', `
       <li>基準点が 3 点以上あるときは、向ける点を替えて十字を当て「＋ 足す」。
         <b>記録した全部の点で</b>いちばん合う位置に置き直し、点ごとのずれが出る。「近い点」で十字に近い点を選べる</li>
       <li>画面を指でなぞる・ひねると、固定した点を中心に回る</li>
-      <li>合ったら「固定する」（緑の表示）。固定中は画面に触ってもモデルは動かない。直すときは「位置合わせ」</li>
+      <li>合ったら左下の「◀ 閉じる」（メニューを閉じると固定・緑の表示）。固定中は画面に触ってもモデルは動かない。直すときは「☰ メニュー」で開く</li>
       <li class="cloudonly"><b>点群</b>があるときは、モデルと一緒に点群も出る。十字の下に「点群まで ◯ cm」が出て、
         20 cm を超えると赤になる（基準点を合わせ直す目安）。
         「点群の点を拾う」→ 画面で点群の目印（白線の角など）をタップすると、その点が新しい基準点（Q1, Q2 …）になる。
@@ -160,13 +160,13 @@ document.body.insertAdjacentHTML('afterbegin', `
       <button id="s1">実寸に戻す</button>
     </div>
     <div class="row adjonly">
-      <button id="lock" class="big green" disabled>固定する</button>
+      <button id="lock" class="big green" disabled hidden>固定する</button>
+      <button id="toggle">半透明</button>
       <button id="exit1">終わる</button>
     </div>
     <!-- 固定中 -->
     <div class="row lockonly">
-      <button id="adjust" class="big orange">位置合わせ</button>
-      <button id="toggle">半透明</button>
+      <button id="adjust" class="big orange" hidden>位置合わせ</button>
       <button id="cloud2" class="cloudonly">点群：小</button>
       <button id="range2" class="cloudonly">範囲 50m</button>
       <button id="exit2">終わる</button>
@@ -992,7 +992,7 @@ function showUI() {
     $('slock').disabled = !placed;
     const mode = '<span class="mode adj">位置合わせ</span>';
     let st;
-    if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>直すときは「位置合わせ」';
+    if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>直すときは左下の「☰ メニュー」';
     else if (!lastHit) st = mode + '<b>地面を探しています…</b><br>スマホをゆっくり左右に動かしてください';
     else if (!placed) st = mode + '<b>点群を読んでいます…</b>';
     else if (pickSlot === 0 && (PT[0].unset || !done1)) st = mode + (PT[0].unset
@@ -1001,7 +1001,7 @@ function showUI() {
     else if (pickSlot === 0) st = mode + '<b>点群をタップすると P1 を選び直す</b><br>選び直したら ① を押し直す。P2 を選ぶなら「P2 を選ぶ」';
     else if (PT[1].unset) st = mode + '<b>P1 から離れた所を点群の中でタップ → P2</b><br>2 本指でひねると P1 を中心に回る';
     else if (!done2) st = mode + '<b>十字を現地の P2 の場所に当てて「② P2 をここ」</b><br>違う所なら、点群をタップし直すと P2 が移る';
-    else st = mode + '<b>合ったら「固定する」</b><br>点群をタップすると P2 を選び直す（② を押し直す）';
+    else st = mode + '<b>合ったら左下の「◀ 閉じる」で固定</b><br>点群をタップすると P2 を選び直す（② を押し直す）';
     $('step').innerHTML = st;
     $('info').textContent = '';
     return;
@@ -1027,16 +1027,16 @@ function showUI() {
   $('scaleTgl').textContent = allowScale ? '拡大：あり' : '拡大：なし';
 
   let st;
-  if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>直すときは「位置合わせ」';
+  if (!aligning) st = '<span class="mode lock">固定中</span><b>画面に触ってもモデルは動きません</b><br>直すときは左下の「☰ メニュー」';
   else if (!lastHit) st = '<span class="mode adj">位置合わせ</span><b>地面を探しています…</b><br>スマホをゆっくり左右に動かしてください';
   else if (!placed && PT[pivot].start && AT) st = `<span class="mode adj">位置合わせ</span><b>十字を QR の真ん中に当てて「◎ ${a} をここへ」</b><br>そのあと 2 本指でひねると向きが回る`;
   else if (!placed && PT[pivot].start) st = `<span class="mode adj">位置合わせ</span><b>十字を足もと（地図で選んだ始める場所）に当てて「◎ ${a} をここへ」</b><br>点群が大まかな位置に出る`;
   else if (!placed) st = `<span class="mode adj">位置合わせ</span><b>十字を ${a} の印に合わせて「◎ ${a} をここへ」</b>`;
-  else if (PT[pivot].start && AT) st = `<span class="mode adj">位置合わせ</span><b>2 本指でひねって向きを合わせる</b><br>QR の真ん中が固定点。合ったら「固定する」`;
+  else if (PT[pivot].start && AT) st = `<span class="mode adj">位置合わせ</span><b>2 本指でひねって向きを合わせる</b><br>QR の真ん中が固定点。合ったら「◀ 閉じる」で固定`;
   else if (PT[pivot].start) st = `<span class="mode adj">位置合わせ</span><b>「点群の点を拾う」→ 現地で分かる所（白線の角など）をタップ</b><br>拾った点が固定点になる。点群は 1 本指でなぞると回る`;
   else if (noTgt) st = `<span class="mode adj">位置合わせ</span><b>「点群の点を拾う」→ ${a} から離れた所をタップして 2 点目を拾う</b><br>拾ったら十字を現地の同じ所に当てて「→ 向ける」`;
-  else if (obs.size < 2) st = `<span class="mode adj">位置合わせ</span><b>十字を ${b} の印に合わせて「→ ${b} へ向ける」</b><br>画面をなぞる・ひねると ${a} を中心に回る。合ったら「固定する」`;
-  else st = `<span class="mode adj">位置合わせ</span><b>記録 ${obs.size} 点。ほかの点も十字を当てて「＋ 足す」</b><br>十分に合ったら「固定する」`;
+  else if (obs.size < 2) st = `<span class="mode adj">位置合わせ</span><b>十字を ${b} の印に合わせて「→ ${b} へ向ける」</b><br>画面をなぞる・ひねると ${a} を中心に回る。合ったら「◀ 閉じる」で固定`;
+  else st = `<span class="mode adj">位置合わせ</span><b>記録 ${obs.size} 点。ほかの点も十字を当てて「＋ 足す」</b><br>十分に合ったら左下の「◀ 閉じる」で固定`;
   $('step').innerHTML = st;
   $('info').textContent = placed
     ? `固定点 ${a}　向き ${(((theta / DEG) % 360 + 540) % 360 - 180).toFixed(1)}°　大きさ ${(s * 100).toFixed(1)}%${scaleText()}`
@@ -1147,16 +1147,18 @@ try { if (localStorage.getItem('arfold')) setFold(true); } catch (e) {}
 const menuBtn = document.createElement('button');
 menuBtn.id = 'menu'; menuBtn.type = 'button';
 $('overlay').appendChild(menuBtn);
+// ★閉じる＝固定（十字を消し、画面に触ってもモデルが動かない）・開く＝位置合わせ。「固定する」「位置合わせ」のボタンの代わり（2026-10-16 AXIO さん）
+let menuOpen = true;
 function setMenu(open) {
+  menuOpen = open;
   $('overlay').classList.toggle('menuclosed', !open);
-  menuBtn.textContent = open ? '◀ 閉じる' : '☰ メニュー';
-  menuBtn.setAttribute('aria-label', open ? 'ボタンの列を閉じる' : 'ボタンの列を開く');
-  try { localStorage.setItem('armenu', open ? '' : '1'); } catch (e) {}
+  menuBtn.textContent = open ? '◀ 閉じる（固定）' : '☰ メニュー';
+  menuBtn.setAttribute('aria-label', open ? 'ボタンの列を閉じて固定する' : 'ボタンの列を開いて位置合わせにする');
+  if (open && !aligning) unlock();
+  else if (!open && aligning && placed) lock();
+  else apply();
 }
-menuBtn.onclick = () => setMenu($('overlay').classList.contains('menuclosed'));
-let menuClosed = false;
-try { menuClosed = !!localStorage.getItem('armenu'); } catch (e) {}
-setMenu(!menuClosed);
+menuBtn.onclick = () => setMenu(!menuOpen);
 $('sexit1').onclick = $('sexit2').onclick = () => session?.end();
 $('adjust').onclick = unlock;
 $('toggle').onclick = () => {
@@ -1281,6 +1283,7 @@ async function startAR() {
     domOverlay: { root: overlay },
   });
   overlay.classList.add('on');
+  setMenu(true);                                // AR を始めたらメニューを開いて位置合わせから
   overlay.addEventListener('beforexrselect', e => e.preventDefault());
   picker?.release?.();                          // 起動画面の地図の点群（2 つ目の写し）を下ろして、メモリと熱を減らす
   renderer.domElement.style.display = 'block';
@@ -1454,7 +1457,7 @@ renderer.setAnimationLoop((time, frame) => {
       reticle.matrix.fromArray(hits[0].getPose(refSpace).transform.matrix);
       if (byPoint) reticle.matrix.makeTranslation(new THREE.Vector3().setFromMatrixPosition(reticle.matrix));   // 特徴点の向きは当てにならないので水平に
       reticle.matrixWorldNeedsUpdate = true;
-      reticle.visible = aligning && !padMode;    // 固定中・コントローラー操作中は十字（ターゲットマーク）を出さない
+      reticle.visible = aligning && !padMode && menuOpen;    // 固定中・コントローラー操作中は十字（ターゲットマーク）を出さない
       lastHit = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
     } else {
       reticle.visible = false;
