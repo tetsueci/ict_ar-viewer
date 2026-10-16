@@ -356,6 +356,8 @@ let xrOK = false;                               // AR を始められる端末�
 //   ?at=c … 点群の真ん中の地面　?at=X,Y,Z … 現場座標。AR の中では十字を QR の真ん中に当てて「◎ S をここへ」。
 //   縮尺は ?scale=1/100。向きは 2 本指でひねって合わせる。この始める場所はスマホに覚えない
 const QS = new URLSearchParams(location.search);
+// iPhone の Chrome・Edge・Firefox など（Safari 以外）では Variant Launch が「Safari で開いてください」と出して AR を始められない（2026-10-16 AXIO さん実機）
+const IOS_OTHER = IS_IOS && /CriOS|FxiOS|EdgiOS|OPiOS|GSA\//.test(navigator.userAgent);
 const AT = STARTPICK ? QS.get('at') : null;
 if (AT && AT !== 'c') {
   const [x, y, z] = AT.split(',').map(Number);
@@ -444,7 +446,7 @@ function addToGrid(o) {
 // 点群を読み終えたら（EPT は粗い段を読み終えたら）
 function cloudReady() {
   viewReady();
-  $('support').textContent = '';
+  if (!IOS_OTHER) $('support').textContent = '';   // 「Safari で開いてください」は消さない
   if (isStart(0) && AT === 'c') {               // QR（?at=c）：点群の真ん中の地面を始める場所にする
     const v = cloudCenterGround();
     startAt = glToSite(v); moveStart(v); updateStart();
@@ -1416,8 +1418,6 @@ if (AT) {
     $('start').click();
   };
 }
-// iPhone の Chrome・Edge・Firefox など（Safari 以外）では Variant Launch が「Safari で開いてください」と出して AR を始められない（2026-10-16 AXIO さん実機）
-const IOS_OTHER = IS_IOS && /CriOS|FxiOS|EdgiOS|OPiOS|GSA\//.test(navigator.userAgent);
 if (IOS_OTHER) {
   $('support').innerHTML = '<b>iPhone で AR を始めるには、このページを Safari で開いてください。</b><br>（「3D で見る」はこのままでも使えます）';
 } else if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false)) {
