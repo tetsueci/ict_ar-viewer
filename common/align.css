@@ -139,3 +139,15 @@ button.armed { background: var(--warn) !important; color: #fff !important; borde
 /* 点を選ぶ行は「◀ 固定 P1 ▶」「◀ 向ける P2 ▶」の 2 段に（◀ ▶ だけが 1 行ずつ並ぶと何の矢印か分からない） */
 #overlay .panel > .row:has(#pp) { display: grid !important; grid-template-columns: auto auto auto; gap: 5px; }
 #overlay .panel button#pp, #overlay .panel button#pn, #overlay .panel button#tp, #overlay .panel button#tn { min-width: 0; padding: 10px 12px; }
+/* ボタンの列を開く／閉じる（左下）。列はその上に出す */
+#overlay #menu { position: absolute; left: 8px; bottom: 10px; padding: 9px 14px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  background: rgba(15,18,22,.82); color: #fff; pointer-events: auto; }
+#overlay .panel { bottom: 56px; }
+#overlay.menuclosed .panel { display: none !important; }
+#overlay.padmode #menu { display: none; }
+/* 横画面：ガイドは右上に寄せ、ボタンの列は画面の高さいっぱいまで使う */
+@media (orientation: landscape) {
+  #overlay .top { left: auto; right: 8px; width: min(46vw, 460px); max-height: 46vh; overflow-y: auto; }
+  #overlay .panel { max-height: calc(100vh - 72px); }
+  #mcpanel input[type=range] { width: 30vw; }
+}

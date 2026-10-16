@@ -1116,6 +1116,20 @@ function setFold(on) {
 }
 $('fold').onclick = () => setFold(!document.querySelector('#overlay .top').classList.contains('folded'));
 try { if (localStorage.getItem('arfold')) setFold(true); } catch (e) {}
+// ボタンの列（左の縦 1 列）を開く／閉じる（2026-10-16 AXIO さん。閉じたかはこのスマホに覚える）
+const menuBtn = document.createElement('button');
+menuBtn.id = 'menu'; menuBtn.type = 'button';
+$('overlay').appendChild(menuBtn);
+function setMenu(open) {
+  $('overlay').classList.toggle('menuclosed', !open);
+  menuBtn.textContent = open ? '◀ 閉じる' : '☰ メニュー';
+  menuBtn.setAttribute('aria-label', open ? 'ボタンの列を閉じる' : 'ボタンの列を開く');
+  try { localStorage.setItem('armenu', open ? '' : '1'); } catch (e) {}
+}
+menuBtn.onclick = () => setMenu($('overlay').classList.contains('menuclosed'));
+let menuClosed = false;
+try { menuClosed = !!localStorage.getItem('armenu'); } catch (e) {}
+setMenu(!menuClosed);
 $('sexit1').onclick = $('sexit2').onclick = () => session?.end();
 $('adjust').onclick = unlock;
 $('toggle').onclick = () => {
