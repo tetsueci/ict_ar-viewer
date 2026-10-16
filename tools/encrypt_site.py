@@ -3,9 +3,11 @@
     python tools/encrypt_site.py _plain/<フォルダ> <フォルダ>
 
 - 入力（_plain/ の下。.gitignore 済み・公開しない）：config.json と、そこに書いたファイル
-  （model / plan / pointcloud）
+  （model / plan / pointcloud）と、"ept" があればその ept.json のフォルダ（ept/）の中身全部
 - 出力（リポジトリに置くフォルダ）：config.json（基準点と origin は enc.secret に暗号化）・
   <ファイル>.enc・index.html（common/page.html の写し）。出力フォルダにある暗号化していないファイルは消す
+- EPT は名前を変えずに 1 ファイルずつ暗号化する（common/ept.js が fetchBuf で読むので、名前はそのまま・中身だけ暗号）。
+  出力の ept/ は先に消してから書く（平文の .laz を残さない）
 - 暗号：AES-GCM 256（先頭 12 バイトが IV）。鍵はパスワードから PBKDF2-SHA256（ソルト 16 バイト・60 万回）。
   common/align.js が WebCrypto で同じように戻す
 - ★パスワードはその場で入力する（画面に出ない・どこにも保存しない）。
@@ -73,6 +75,22 @@ def main():
         pub[k] = name + ".enc"
         plain_names.add(name)
         print(f"  {name} {len(data) / 1e6:.2f} MB → {name}.enc")
+    if cfg.get("ept"):
+        esrc = os.path.join(src, os.path.dirname(cfg["ept"]))
+        eout = os.path.join(out, os.path.dirname(cfg["ept"]))
+        if os.path.exists(eout):
+            shutil.rmtree(eout)
+        n_e = tot = 0
+        for r, _, fs in os.walk(esrc):
+            for f in fs:
+                rel = os.path.relpath(os.path.join(r, f), esrc)
+                os.makedirs(os.path.dirname(os.path.join(eout, rel)), exist_ok=True)
+                with open(os.path.join(r, f), "rb") as fi:
+                    data = fi.read()
+                with open(os.path.join(eout, rel), "wb") as fo:
+                    fo.write(seal(key, data))
+                n_e += 1; tot += len(data)
+        print(f"  {os.path.dirname(cfg['ept'])}/ {n_e} ファイル {tot / 1e6:.1f} MB を名前のまま暗号化")
     secret = json.dumps({k: cfg[k] for k in SECRET if k in cfg}, ensure_ascii=False).encode("utf-8")
     pub["enc"] = {"kdf": "PBKDF2-SHA256", "iter": ITER, "salt": base64.b64encode(salt).decode(),
                   "secret": base64.b64encode(seal(key, secret)).decode()}

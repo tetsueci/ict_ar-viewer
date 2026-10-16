@@ -1,30 +1,15 @@
 {
   "title": "BRIDGEPOINT",
   "version": "20261006114826",
-  "model": "model.glb",
-  "plan": "plan.png",
+  "model": "model.glb.enc",
+  "plan": "plan.png.enc",
   "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
-  "origin": {
-    "x": -30609.0,
-    "y": 125607.0,
-    "z": 0.0
-  },
-  "points": [
-    {
-      "name": "P1",
-      "x": -30679.98,
-      "y": 125546.83,
-      "z": 27.32,
-      "note": "A1 側 路面（伸縮装置から 3 m 内側・車線の中）"
-    },
-    {
-      "name": "P2",
-      "x": -30539.03,
-      "y": 125667.53,
-      "z": 27.88,
-      "note": "A2 側 路面（伸縮装置から 3 m 内側・車線の中）"
-    }
-  ],
-  "pointcloud": "pointcloud.glb",
-  "ept": "ept/ept.json"
+  "pointcloud": "pointcloud.glb.enc",
+  "ept": "ept/ept.json",
+  "enc": {
+    "kdf": "PBKDF2-SHA256",
+    "iter": 600000,
+    "salt": "WzMlAoWiqHQhFOK3k6BGVg==",
+    "secret": "hzX9hvhlhNM0zjEIW/Wtp4qTSvNGwDVgsI4qAOWUSjiG90CsRGHdSBiv+EzRvQB5aiJudib4Bb9pzsSCZiJDnxRHccocqq0wBG2CzFK0OvpD9lXVfp5e8mD1bnncmnxJQNOTgNcHEMDZxpI5TQQLeOeFQLi9A8lgdu4+nJecStimuT2W1fmbiVY0On7pnty9+Q26TpyWfELrZwWcfwemjNIhY17Oi+2ajdhZEujNLjYFbmBjGES0o4hZWWusrXfzZ2skGJ5HHCQBJkTvbfapczwnbtfWlYuNEgi6s0UuIAMmlHq3BMUKhJVSStwfdlNH61I8dbPEI3abz6TVRqzs+2e22hW/AeUUxz0rZLYXftlmJYl/LZYGYPfZqcYV9IGI1vu94daeju9/DHj74dNmifnBz//ZnCa2mCbhaHpglld0oElpdg/i8+II6Pt0YOvbazLnHJKd3InIaIqn5OVibKBpHov2UGmBNlM="
+  }
 }

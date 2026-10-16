@@ -15,7 +15,5 @@ _plain/
 *.ifc
 *.dxf
 
-# 例外：BRIDGEPOINT はパスワードなしで公開する（2026-10-06 AXIO さん決定）
-!BRIDGEPOINT/*.glb
-!BRIDGEPOINT/*.png
+# 例外：BRIDGEPOINT の EPT（中身は暗号化。名前は .laz のまま）
 !BRIDGEPOINT/ept/ept-data/*.laz
