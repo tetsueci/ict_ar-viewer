@@ -25,5 +25,6 @@
       "note": "A2 側 路面（伸縮装置から 3 m 内側・車線の中）"
     }
   ],
-  "pointcloud": "pointcloud.glb"
+  "pointcloud": "pointcloud.glb",
+  "ept": "ept/ept.json"
 }

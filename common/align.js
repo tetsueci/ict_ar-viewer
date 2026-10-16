@@ -339,7 +339,7 @@ $('qclear').onclick = e => tapTwice(e.currentTarget, 'もう一度押すと全�
   try { localStorage.removeItem(QKEY); } catch (e) {}
   location.reload();
 });
-if (cfg.pointcloud) document.body.classList.add('hascloud');
+if (cfg.pointcloud || cfg.ept) document.body.classList.add('hascloud');
 
 // 現場座標（X=東, Y=北, Z=標高）⇔ glTF（x, y=上, z=南）
 // origin（任意）：model.glb は現場座標から origin を引いた値で入っている。
@@ -430,33 +430,60 @@ let cloud = null, cloudSize = 1;
 const cloudGrid = new Map();                    // 0.5 m 角の升 → その升の点（group の中の座標・x,y,z の並び）
 const CELL = 0.5;
 const cellKey = (x, z) => (Math.floor(x / CELL) + 32768) * 65536 + (Math.floor(z / CELL) + 32768);
-if (cfg.pointcloud) {
+// 点を 0.5 m 角の升に入れる（十字から点群までの距離・点群の真ん中の地面を探すのに使う）
+function addToGrid(o) {
+  const a = o.geometry.getAttribute('position'), v = new THREE.Vector3();
+  for (let i = 0; i < a.count; i++) {
+    v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
+    const k = cellKey(v.x, v.z);
+    let c = cloudGrid.get(k);
+    if (!c) cloudGrid.set(k, c = []);
+    c.push(v.x, v.y, v.z);
+  }
+}
+// 点群を読み終えたら（EPT は粗い段を読み終えたら）
+function cloudReady() {
+  viewReady();
+  $('support').textContent = '';
+  if (isStart(0) && AT === 'c') {               // QR（?at=c）：点群の真ん中の地面を始める場所にする
+    const v = cloudCenterGround();
+    startAt = glToSite(v); moveStart(v); updateStart();
+  } else if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
+  picker?.addCloud(cloud);
+  paintRange(); thinCloud();
+}
+// EPT（config.json の "ept"：ept.json の場所。common/ept.js）：見ている所の近くだけ細かい段を読む。"pointcloud" より先に使う
+let ept = null, eptAt = 0;
+if (cfg.ept) {
+  $('support').textContent = '点群を読んでいます…';
+  const mat = new THREE.PointsMaterial({ size: CLOUD_PX[cloudSize], sizeAttenuation: false, vertexColors: true, depthWrite: false });
+  import('./ept.js').then(({ createEpt }) => createEpt({
+    THREE, url: cfg.ept, fetchBuf, origin: O, material: mat,
+    onNode: (o, d) => { if (d <= 2) { o.updateMatrixWorld(); addToGrid(o); } },   // 升は粗い段（段 2 まで）だけで作る（メモリ）
+    onRoot: () => { if (cloud) cloudReady(); },
+  })).then(e => {
+    ept = e; cloud = e.group; group.add(cloud);
+    if (cloud.children.length) cloudReady();     // 粗い段のほうが先に読み終わっていたとき
+  }).catch(err => { $('support').textContent = '点群（EPT）を読めませんでした：' + err.message; });
+}
+function eptUpdate() {
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  const v = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld).applyMatrix4(tmpM.copy(group.matrix).invert());
+  ept.update(glToSite(v), viewCtl || mcBoarded ? 1 : s, viewCtl ? null : cloudRange);   // 「3D で見る」では範囲を切らない
+}
+if (cfg.pointcloud && !cfg.ept) {
   $('support').textContent = '点群を読んでいます…';
   loadGlb(cfg.pointcloud).then(sc => {
     sc.updateWorldMatrix(false, true);          // まだ group に入れていないので、matrixWorld は点群の中での位置
-    const v = new THREE.Vector3();
     sc.traverse(o => {
       if (!o.isPoints) return;
       // 点群は奥行きを書かない（地表面の点が地下の管路の手前に来て、モデルがあちこち切れて見えた。2026-10-15 AXIO さん「常にすべてのモデルが見えるように」）
       o.material = new THREE.PointsMaterial({ size: CLOUD_PX[cloudSize], sizeAttenuation: false, vertexColors: true, depthWrite: false });
-      const a = o.geometry.getAttribute('position');
-      for (let i = 0; i < a.count; i++) {
-        v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld);
-        const k = cellKey(v.x, v.z);
-        let c = cloudGrid.get(k);
-        if (!c) cloudGrid.set(k, c = []);
-        c.push(v.x, v.y, v.z);
-      }
+      addToGrid(o);
     });
-    cloud = splitTiles(sc); group.add(cloud); viewReady();
-    $('support').textContent = '';
-    if (isStart(0) && AT === 'c') {               // QR（?at=c）：点群の真ん中の地面を始める場所にする
-      const v = cloudCenterGround();
-      startAt = glToSite(v); moveStart(v); updateStart();
-    } else if (isStart(0) && !startAt) moveStart(cloudCenterGround());   // 選ぶまでは点群の真ん中の地面
-    picker?.addCloud(cloud);
+    cloud = splitTiles(sc); group.add(cloud);
     sc.traverse(o => o.geometry?.dispose());     // 元の 1 本は使わない（升に分けた写しを使う）
-    paintRange(); thinCloud();
+    cloudReady();
   }).catch(() => { $('support').textContent = '点群を読めませんでした（' + cfg.pointcloud + '）'; });
 }
 // 点群の外接箱の真ん中にいちばん近い地面の点（真ん中の 3 m 以内でいちばん低い点。無ければ箱の底）
@@ -801,7 +828,7 @@ if (STARTPICK) {
   // MapControls を読んでいる間に読み終わっていたもの
   if (cloud) picker.addCloud(cloud);
   if (modelRoot) picker.addModel(modelRoot);
-  if (!cfg.pointcloud) $('pickinfo').textContent = 'この現場には点群がありません（config.json の pointcloud）';
+  if (!cfg.pointcloud && !cfg.ept) $('pickinfo').textContent = 'この現場には点群がありません（config.json の pointcloud）';
 }
 
 // ---------- 置き方の値 ----------
@@ -1334,7 +1361,7 @@ if (cfg.offline && 'serviceWorker' in navigator && !IS_IOS) {
       await new Promise(ok => navigator.serviceWorker.addEventListener('controllerchange', ok, { once: true }));
     if (!navigator.onLine) { note.textContent = '電波が無いので、保存してある版で開いています'; return; }
     note.textContent = '電波が無くても開けるように保存しています…（モデルと点群を読み終えるまで待ってください）';
-    for (let i = 0; i < 1800 && !(modelRoot && (cloud || !cfg.pointcloud)); i++) await new Promise(ok => setTimeout(ok, 1000));
+    for (let i = 0; i < 1800 && !(modelRoot && (cloud || !(cfg.pointcloud || cfg.ept))); i++) await new Promise(ok => setTimeout(ok, 1000));
     await new Promise(ok => setTimeout(ok, 3000));  // 重機の部品など、あとから読むもの
     await import('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js/+esm').catch(() => {});   // 「3D で見る」の部品
     // 初めて開いたときは、読んだあとで service worker が受け持ったので、読んだものをもう一度読ませて保存させる
@@ -1416,6 +1443,7 @@ if (cfg.machines) {
 }
 let liveAt = 0, tileAt = 0;
 renderer.setAnimationLoop((time, frame) => {
+  if (ept && (placed || viewCtl) && time - eptAt > 500) { eptAt = time; eptUpdate(); }   // EPT：近くの細かい段を読む・遠くは粗い段だけ
   if (frame && hitSource) {
     if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); mc?.frame(!!lastHit, aligning, placed); }
     mc?.tick(time);                              // ゲームコントローラーで重機を動かす（毎フレーム）
