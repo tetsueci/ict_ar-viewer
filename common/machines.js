@@ -181,7 +181,7 @@ export async function initMachines(api) {
       <select id="mcsel"></select>
       <button id="mchere" disabled>重機を置く</button>
     </div>
-    <div class="row mcbody"><button id="mcadd">＋同じ重機</button><button id="mcdel">この重機を消す</button></div>
+    <div class="row mcbody"><button id="mcsolo"></button><button id="mcadd">＋同じ重機</button><button id="mcdel">この重機を消す</button></div>
     <div class="row mcbody"><select id="mcctl"></select><input id="mcval" type="range"><span id="mcnum" class="mcnum"></span></div>
     <div class="row mcbody"><button id="mcride">運転席に乗る</button></div>
     <div class="row mcbody"><span id="mcread" class="mcread"></span></div>`;
@@ -197,6 +197,15 @@ export async function initMachines(api) {
     });
     if (cur >= units.length) cur = units.length - 1;
     $('mcsel').value = cur;
+    applySolo();
+  }
+  // 選んだ重機だけを出す（ほかの台は隠すだけで、置いた場所と姿勢は覚えている。2026-10-21 AXIO さん）。
+  // 既定は「隠す」。config.json の "machinesSolo": false なら初めから全部出す。操作盤のボタンで切り替える
+  let solo = cfg.machinesSolo !== false;
+  function applySolo() {
+    units.forEach((u, i) => { u.root.children[0].visible = !solo || i === cur; });   // root.visible は「置いたか」に使うので、中の body を隠す
+    const b = document.getElementById('mcsolo');
+    if (b) b.textContent = solo ? 'ほかの重機：隠す' : 'ほかの重機：出す';
   }
   const unit = () => units[cur];
   const getv = (u, c) => (c.key === '_heading' ? u.heading : u.st[c.key]);
@@ -227,7 +236,8 @@ export async function initMachines(api) {
     $('mcread').textContent = placing ? 'モデルか点群の、重機を置きたい所をタップしてください'
       : u.root.visible ? u.readout : '「重機を置く」→ モデルか点群の置きたい所をタップ';
   }
-  $('mcsel').onchange = () => { cur = +$('mcsel').value; if (placing) setPlace(false); fillControls(); };
+  $('mcsel').onchange = () => { cur = +$('mcsel').value; if (placing) setPlace(false); applySolo(); fillControls(); };
+  $('mcsolo').onclick = () => { solo = !solo; applySolo(); };
   // 同じ種類の重機をもう 1 台。足したらそのまま「タップで置く」にする
   $('mcadd').onclick = () => {
     const u = makeUnit(unit().t, { id: unit().t.id, heading: unit().heading });
