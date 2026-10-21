@@ -28,7 +28,8 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 ITER = 600_000
 FILES = ("model", "plan", "pointcloud")          # config.json の中でファイル名を持つ項目
-SECRET = ("points", "origin")                    # 暗号化する項目（見られてよいタイトルなどは平文のまま）
+SECRET = ("points", "origin", "machines")        # 暗号化する項目（見られてよいタイトルなどは平文のまま）。
+# machines は置き場所（現場の座標）を持つので暗号化する（2026-10-21。平面直角座標のまま公開すると場所が分かる）
 
 
 def seal(key, data):

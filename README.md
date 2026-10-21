@@ -332,7 +332,7 @@ AR の中で十字を QR の真ん中に当てて「◎ S をここへ」→ S �
    ```bash
    python tools/encrypt_site.py _plain/<フォルダ> <フォルダ>
    ```
-   - 出るもの：`config.json`（タイトル・版・ファイル名は平文、`points` と `origin` は `enc.secret` に暗号化）・
+   - 出るもの：`config.json`（タイトル・版・ファイル名は平文、`points`・`origin`・`machines`（重機の置き場所は現場の座標なので）は `enc.secret` に暗号化）・
      `model.glb.enc`・`plan.png.enc`・`pointcloud.glb.enc`・`index.html`
    - AES-GCM 256・鍵は PBKDF2-SHA256（ソルト 16 バイト・60 万回）。ファイルごとに IV を変える
 3. ページを開くとパスワード欄が出る → ブラウザの WebCrypto で復号して読む。違うと「パスワードが違います」
