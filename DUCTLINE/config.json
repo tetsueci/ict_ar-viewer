@@ -1,11 +1,10 @@
 {
   "title": "電線共同溝",
-  "version": "20261013222557",
+  "version": "20261021180946",
   "model": "model.glb.enc",
   "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
   "pointcloud": "pointcloud.glb.enc",
   "start": "pick",
-  "offline": true,
   "machines": [
     {
       "id": "KATO_SR250Rf2"
@@ -18,7 +17,7 @@
   "enc": {
     "kdf": "PBKDF2-SHA256",
     "iter": 600000,
-    "salt": "ZsfUwU5FuBxZ2bpOzEZShA==",
-    "secret": "EXpRwW/umwhMTb8JDFUNfPLCEbp6vB+sO8eB6/NgTkLAnjGBqytCAiPOH82bu77m0vdtMnU82uX/whHrBf+A3VMomRd3yVNbZgFl9cEBcOTje3L9DSbeny17jpkQ"
+    "salt": "jraZVVPFA/hXuwarEhuYjg==",
+    "secret": "Y77T0hTsbZs9cBUPkFL2GHeBCkkerV9tPfAawDNbiuuFStew9jlNkSierH/hessNCehVQN2tE5uHD7+7ZVpSHY1vRvsENW+vxDlxbSXz7w8yp6ajm7ZSFxpj7NTM"
   }
 }
