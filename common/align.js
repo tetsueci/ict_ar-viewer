@@ -852,9 +852,18 @@ function matrixOf() {
 function apply() {
   if (placed) { group.matrix.copy(matrixOf()); group.matrixWorldNeedsUpdate = true; }
   group.visible = placed;
-  pivMark.position.copy(P[pivot]); pivMark.position.y += 0.006;
+  // 旗・名札・輪は模型と一緒に縮むので、縮めても見える大きさを保つ（実際の大きさは 1/10 のときと同じより小さくしない）。
+  // 1/100 だと旗が 1.5 cm・名札が 6 mm になり、点を拾っても旗が立たないように見えた（2026-10-22 AXIO さん）
+  const k = Math.max(s, 0.1) / s;
+  flagObjs.forEach((o, i) => {
+    o.f.scale.setScalar(k);
+    o.sp.scale.set(0.6 * k, 0.225 * k, 1);
+    o.sp.position.copy(P[i]); o.sp.position.y += (FLAG_H + 0.3) * k;
+  });
+  pivMark.scale.setScalar(k); tgtMark.scale.setScalar(k);
+  pivMark.position.copy(P[pivot]); pivMark.position.y += 0.006 * k;
   pivMark.visible = aligning;
-  tgtMark.position.copy(P[target]); tgtMark.position.y += 0.006;
+  tgtMark.position.copy(P[target]); tgtMark.position.y += 0.006 * k;
   tgtMark.visible = aligning;
   paintFlags();
   thinCloud();
