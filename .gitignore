@@ -17,3 +17,4 @@ _plain/
 
 # 例外：BRIDGEPOINT の EPT（中身は暗号化。名前は .laz のまま）
 !BRIDGEPOINT/ept/ept-data/*.laz
+!DUCTLINE/ept/ept-data/*.laz
