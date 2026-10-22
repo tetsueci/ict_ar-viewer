@@ -461,6 +461,7 @@ if (cfg.ept) {
   const mat = new THREE.PointsMaterial({ size: CLOUD_PX[cloudSize], sizeAttenuation: false, vertexColors: true, depthWrite: false });
   import('./ept.js').then(({ createEpt }) => createEpt({
     THREE, url: cfg.ept, fetchBuf, origin: O, material: mat,
+    classes: Array.isArray(cfg.cloudClasses) ? cfg.cloudClasses : null, classOn: () => layerOn,   // 分類ごとの出し分け（"cloudClasses"）
     onNode: (o, d) => { if (d <= 2) { o.updateMatrixWorld(); addToGrid(o); } },   // 升は粗い段（段 2 まで）だけで作る（メモリ）
     onRoot: () => { if (cloud) cloudReady(); },
   })).then(e => {
@@ -611,7 +612,7 @@ for (const id of ['cloud1', 'cloud2']) {
     const b = document.createElement('button');
     b.className = $(id).className;
     b.dataset.layer = i;
-    b.onclick = () => { layerOn[i] = !layerOn[i]; paintLayers(); tileAt = 0; };   // 次のフレームですぐ描き直す
+    b.onclick = () => { layerOn[i] = !layerOn[i]; paintLayers(); tileAt = 0; ept?.refreshClasses(); };   // 次のフレームですぐ描き直す
     at.after(b); at = b;
     layerBtns.push(b);
   });

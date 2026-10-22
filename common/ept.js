@@ -5,12 +5,14 @@
 //   描く点の数の上限は BUDGET。縮尺 s を掛けた実際の距離で決めるので、縮めると自然に粗い段だけになる
 // ・.laz は laz-perf（WebAssembly・jsDelivr）でほどく。座標は平面直角座標のまま入っていて、ここで origin を引く
 // ・作るのは tools/las_to_ept.py
+// ・classes（[2, 1] など分類の番号）を渡すと、節点ごとに点をその順に並べ、classOn()（真偽の並び）で出し分ける
+//   （config.json の "cloudClasses" と "cloudLayers"。描く範囲 drawRange を変えるだけ。refreshClasses() で描き直す）
 const LAZPERF = 'https://cdn.jsdelivr.net/npm/laz-perf@0.0.6/lib/web/';
 const BUDGET = 1500000;                         // 描く点の上限（ある現場で 233 万点を描いたら熱くなって落ちた。93 万点は動いた）
 const ANGLE = 0.003;                            // 点の間隔がこの角度（ラジアン・約 2 画素）より粗く見えたら細かい段を足す
 const PARALLEL = 4;                             // 同時に読む数
 
-export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot, onNode }) {
+export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot, onNode, classes = null, classOn = null }) {
   const base = url.replace(/[^/]*$/, '');
   const meta = JSON.parse(new TextDecoder().decode(await fetchBuf(url)));
   const hier = JSON.parse(new TextDecoder().decode(await fetchBuf(base + 'ept-hierarchy/0-0-0-0.json')));
@@ -46,15 +48,17 @@ export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot
     const sc = [dv.getFloat64(131, true), dv.getFloat64(139, true), dv.getFloat64(147, true)];
     const of = [dv.getFloat64(155, true), dv.getFloat64(163, true), dv.getFloat64(171, true)];
     const rgbAt = { 2: 20, 3: 28, 5: 28, 7: 30, 8: 30, 10: 30 }[fmt];
+    const clsAt = fmt >= 6 ? 16 : 15;             // 分類のバイトの位置（形式 0〜5 は下位 5 ビット）
     const fp = lp._malloc(u8.length);
     lp.HEAPU8.set(u8, fp);
     const lz = new lp.LASZip();
-    let pos, col;
+    let pos, col, cls;
     try {
       lz.open(fp, u8.length);
       const n = lz.getCount(), len = lz.getPointLength();
       const pp = lp._malloc(len);
       pos = new Float32Array(n * 3);
+      cls = new Uint8Array(n);
       const rgb = rgbAt !== undefined ? new Uint16Array(n * 3) : null;
       let big = 0;
       for (let i = 0; i < n; i++) {
@@ -62,6 +66,7 @@ export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot
         const v = new DataView(lp.HEAPU8.buffer, pp, len);
         const X = v.getInt32(0, true) * sc[0] + of[0], Y = v.getInt32(4, true) * sc[1] + of[1], Z = v.getInt32(8, true) * sc[2] + of[2];
         pos[i * 3] = X - origin.x; pos[i * 3 + 1] = Z - origin.z; pos[i * 3 + 2] = -(Y - origin.y);   // 現場の座標 → glTF（Y 上）
+        cls[i] = fmt >= 6 ? v.getUint8(clsAt) : v.getUint8(clsAt) & 31;
         if (rgb) {
           for (let k = 0; k < 3; k++) { const c = v.getUint16(rgbAt + k * 2, true); rgb[i * 3 + k] = c; if (c > big) big = c; }
         }
@@ -75,7 +80,35 @@ export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot
     } finally {
       lz.delete(); lp._free(fp);
     }
-    return { pos, col };
+    return { pos, col, cls };
+  }
+
+  // 分類の順（classes）に点を並べ替え、分類ごとの [始め, 数] を返す（classes に無い分類はいちばん後ろ）
+  function sortByClass(pos, col, cls) {
+    const nb = classes.length + 1, n = cls.length;
+    const bucket = new Uint8Array(n), cnt = new Array(nb).fill(0);
+    for (let i = 0; i < n; i++) { const k = classes.indexOf(cls[i]); bucket[i] = k < 0 ? nb - 1 : k; cnt[bucket[i]]++; }
+    const start = [], at = [];
+    let acc = 0;
+    for (let k = 0; k < nb; k++) { start.push(acc); at.push(acc); acc += cnt[k]; }
+    const p2 = new Float32Array(pos.length), c2 = col ? new Uint8Array(col.length) : null;
+    for (let i = 0; i < n; i++) {
+      const j = at[bucket[i]]++;
+      p2[j * 3] = pos[i * 3]; p2[j * 3 + 1] = pos[i * 3 + 1]; p2[j * 3 + 2] = pos[i * 3 + 2];
+      if (c2) { c2[j * 3] = col[i * 3]; c2[j * 3 + 1] = col[i * 3 + 1]; c2[j * 3 + 2] = col[i * 3 + 2]; }
+    }
+    return { pos: p2, col: c2, ranges: start.map((s0, k) => [s0, cnt[k]]) };
+  }
+  // 出している分類だけを描く（並んだ分類のうち、出しているものの最初から最後まで）
+  function applyClasses(n) {
+    if (!n.obj || !n.ranges) return;
+    const on = classOn ? classOn() : [];
+    let a = -1, b = -1;
+    n.ranges.forEach(([s0, c], k) => {
+      const vis = k < classes.length ? on[k] !== false : true;   // classes に無い分類はいつも出す
+      if (vis && c > 0) { if (a < 0) a = s0; b = s0 + c; }
+    });
+    n.obj.geometry.setDrawRange(a < 0 ? 0 : a, a < 0 ? 0 : b - a);
   }
 
   let loading = 0, shown = 0, onRootDone = false;
@@ -83,7 +116,8 @@ export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot
   async function load(n) {
     n.state = 1; loading++;
     try {
-      const { pos, col } = decode(await fetchBuf(base + 'ept-data/' + n.key + ext));
+      let { pos, col, cls } = decode(await fetchBuf(base + 'ept-data/' + n.key + ext));
+      if (classes) ({ pos, col, ranges: n.ranges } = sortByClass(pos, col, cls));
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       if (col) g.setAttribute('color', new THREE.BufferAttribute(col, 3, true));
@@ -92,6 +126,7 @@ export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot
       n.obj.renderOrder = 0.5;                   // 重機など（0）の後・モデル（1）の前（点群は奥行きを書かない）
       n.obj.userData.eptDepth = n.d;
       n.obj.visible = n.used === tick;   // 読んでいるあいだに選ばれなくなったら隠す
+      applyClasses(n);
       group.add(n.obj);
       n.state = 2;
       onNode?.(n.obj, n.d);
@@ -162,5 +197,6 @@ export async function createEpt({ THREE, url, fetchBuf, origin, material, onRoot
   // まず粗い段（段 0）を読む
   const root = nodes.get('0-0-0-0');
   if (root) { root.used = tick; want.push(root); pump(); }
-  return { group, update, info: () => ({ shown, loading, nodes: nodes.size }) };
+  const refreshClasses = () => { for (const n of nodes.values()) applyClasses(n); };
+  return { group, update, refreshClasses, info: () => ({ shown, loading, nodes: nodes.size }) };
 }
