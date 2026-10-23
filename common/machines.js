@@ -342,7 +342,7 @@ export async function initMachines(api) {
   // 入力：'LX' 'LY' 'RX' 'RY'（前・左が −1）、'T'（RT − LT）、'BA'（B ボタン +1・A ボタン −1）
   const MAP = {
     backhoe: [['angleCabin', '-LX', 50], ['angleArm', '-LY', 45], ['angleBoom', 'RY', 35], ['angleBucket', 'RX', 70]],
-    rough_terrain_crane: [['angleCabin', '-LX', 40], ['lengthBoom', '-LY', 6], ['angleBoom', 'RY', 20], ['lengthWire', 'T', 6], ['outrigger', 'RX', 1]],
+    rough_terrain_crane: [['angleCabin', '-LX', 40], ['lengthBoom', '-LY', 6], ['angleBoom', 'RY', 20], ['lengthWire', 'RX', 6], ['outrigger', 'T', 1]],   // ワイヤとアウトリガを入れ替えた（2026-10-23 AXIO さん）
     crawler_crane: [['angleCabin', '-LX', 30], ['angleBoom', 'RY', 16], ['lengthWire', 'T', 6]],
     bridge_checker4: [['angleSwing', '-LX', 20], ['angleBoom1', '-LY', 12], ['angleSwivel', 'RX', 30], ['angleBoom3', '-RY', 20],
       ['lengthBoom3', 'T', 2], ['angleBoom2', 'BA', 15]],
@@ -354,7 +354,7 @@ export async function initMachines(api) {
   };
   const HELP = {
     backhoe: '左スティック　←→ 旋回　↑ アームを伸ばす　↓ アームを引く\n右スティック　↑ ブーム下げ　↓ ブーム上げ　← バケット抱え込み　→ バケット開く',
-    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ　右スティック → アウトリガを張る　← 縮める',
+    rough_terrain_crane: '左スティック　←→ 旋回　↑ ブームを伸ばす　↓ ブームを縮める\n右スティック　↑ ブームを倒す　↓ ブームを起こす\n右スティック → 巻き下げ　← 巻き上げ\nRT アウトリガを張る　LT 縮める',
     crawler_crane: '左スティック　←→ 旋回\n右スティック　↑ ブームを倒す　↓ ブームを起こす\nRT 巻き下げ　LT 巻き上げ',
     bridge_checker4: '左スティック　←→ 旋回台の旋回　↑ 第1ブームを起こす　↓ 倒す\n右スティック　←→ 第2ブームの旋回　↑ 第3ブームを起こす　↓ 倒す\n'
       + 'RT 第3ブームを伸ばす　LT 縮める　B 第2ブームを起こす　A 下げる\n'
