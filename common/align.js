@@ -1307,13 +1307,67 @@ async function openViewer() {
   viewCtl.target.copy(c); viewCtl.maxDistance = r * 6; viewCtl.update();
   viewClose = document.createElement('button');
   viewClose.textContent = '戻る';
-  viewClose.style.cssText = 'position:fixed;right:16px;top:16px;z-index:61;padding:10px 18px;border:0;border-radius:999px;'
+  viewClose.style.cssText = 'position:fixed;right:16px;top:16px;z-index:63;padding:10px 18px;border:0;border-radius:999px;'
     + 'background:rgba(0,0,0,.65);color:#fff;font:inherit;font-size:15px;font-weight:700';
   viewClose.onclick = closeViewer;
   document.body.appendChild(viewClose);
+  // 重機（2026-10-23）：AR の画面のボタンの列から重機の操作盤だけを出し、コントローラーも読む。「重機を置く」は画面のタップで置く
+  if (mc) {
+    $('overlay').classList.add('on', 'viewmode');
+    mc.setView(true);
+    el.addEventListener('pointerdown', viewDown);
+    el.addEventListener('pointerup', viewUp);
+  }
+}
+let viewTap = null, viewEye = null, viewYaw = 0;
+const viewDown = e => { viewTap = { x: e.clientX, y: e.clientY, t: performance.now() }; };
+const viewUp = e => {
+  if (viewTap && mcPlacing && performance.now() - viewTap.t < 600 && Math.hypot(e.clientX - viewTap.x, e.clientY - viewTap.y) < 15) mc?.tap(e.clientX, e.clientY);
+  viewTap = null;
+};
+// 「3D で見る」で運転席に乗っているあいだ：カメラを目の所に置き、指でドラッグすると見回す（目のすぐ前を中心に回る）。
+// 旋回・走行すると、目と一緒に動き・回る
+const vUp = new THREE.Vector3(0, 1, 0);
+function viewFollowEye() {
+  const e = mc?.viewEye(camera);
+  if (!e) {
+    if (viewEye) {                                 // 降りた：ふつうの見方に戻す
+      viewEye = null;
+      viewCtl.enablePan = viewCtl.enableZoom = true; viewCtl.minDistance = 0;
+      camera.position.add(new THREE.Vector3(0, 3, 6));
+      viewCtl.update();
+    }
+    return;
+  }
+  const yaw = Math.atan2(-e.fwd.z, e.fwd.x);
+  if (!viewEye) {                                  // 乗った：目の所から正面を見る
+    viewEye = e.pos.clone(); viewYaw = yaw;
+    viewCtl.enablePan = viewCtl.enableZoom = false;
+    camera.position.copy(e.pos);
+    viewCtl.target.copy(e.pos).addScaledVector(new THREE.Vector3(e.fwd.x, 0, e.fwd.z).normalize(), 0.05);
+    viewCtl.update();
+    return;
+  }
+  const d = e.pos.clone().sub(viewEye), dy = yaw - viewYaw;
+  if (d.lengthSq() > 1e-12 || Math.abs(dy) > 1e-9) {
+    camera.position.add(d); viewCtl.target.add(d);
+    if (Math.abs(dy) > 1e-9) {                     // 旋回した分だけ見る向きも回す（目を中心に）
+      camera.position.sub(e.pos).applyAxisAngle(vUp, dy).add(e.pos);
+      viewCtl.target.sub(e.pos).applyAxisAngle(vUp, dy).add(e.pos);
+    }
+    viewEye.copy(e.pos); viewYaw = yaw;
+    viewCtl.update();
+  }
 }
 function closeViewer() {
   if (!viewCtl) return;
+  if (mc) {
+    mc.setView(false);                             // 乗っていれば降りる
+    $('overlay').classList.remove('on', 'viewmode');
+    renderer.domElement.removeEventListener('pointerdown', viewDown);
+    renderer.domElement.removeEventListener('pointerup', viewUp);
+    viewEye = null;
+  }
   viewCtl.dispose(); viewCtl = null;
   viewClose.remove(); viewClose = null;
   group.matrix.copy(viewKeep.m); group.matrixWorldNeedsUpdate = true; group.visible = viewKeep.vis; ptMarks.visible = viewKeep.pm;
@@ -1418,13 +1472,18 @@ if (cfg.machines) {
       setPlacing: on => { mcPlacing = on; $('overlay').classList.toggle('mcplace', on); },
       setPadMode: on => { padMode = on; $('overlay').classList.toggle('padmode', on); },
       scene,
-      setBoarded: on => { mcBoarded = on; thinCloud(); if (!on) apply(); } }))
+      setBoarded: on => { mcBoarded = on; thinCloud(); if (!on && !viewCtl) apply(); } }))
     .then(r => { mc = r; })
     .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
 }
 let liveAt = 0, tileAt = 0;
 renderer.setAnimationLoop((time, frame) => {
   if (ept && (placed || viewCtl) && time - eptAt > 500) { eptAt = time; eptUpdate(); }   // EPT：近くの細かい段を読む・遠くは粗い段だけ
+  if (viewCtl && mc) {                            // 「3D で見る」でも重機を動かす（コントローラー・置く・乗る）
+    if (time - tileAt > 500) { tileAt = time; mc.frame(false, true, true); }
+    mc.tick(time);
+    viewFollowEye();
+  }
   if (frame && hitSource) {
     if (time - tileAt > 500) { tileAt = time; updateTiles(renderer.xr.getCamera()); mc?.frame(!!lastHit, aligning, placed); }
     mc?.tick(time);                              // ゲームコントローラーで重機を動かす（毎フレーム）

@@ -258,7 +258,8 @@ export async function initMachines(api) {
   // 運転席に乗る・降りる（コントローラーの X と同じ。コントローラーが無くても乗り降りできるように・2026-10-16）
   // ★board はここで宣言する（下の「運転席に乗る」の節より先に、このボタンと rideLabel が読むため）
   let board = null;                               // { u, p0: スマホの位置, yaw0: 正面にした向き, recenter }
-  let xrAt = 0;                                   // AR のフレームが回っていた時刻（乗れるのは AR の中だけ）
+  let xrAt = 0;                                   // AR のフレームが回っていた時刻（乗れるのは AR の中か「3D で見る」の中）
+  let viewMode = false;                           // 「3D で見る」（AR なし）で操作しているあいだ（2026-10-23）
   function rideLabel() {
     $('mcride').textContent = board ? '運転席から降りる' : '運転席に乗る';
     $('mcride').classList.toggle('sel', !!board);
@@ -266,7 +267,7 @@ export async function initMachines(api) {
   $('mcride').onclick = () => {
     if (board) { boardOff(); return; }
     if (!unit().root.visible) { $('mcread').textContent = 'まず「重機を置く」で置いてください'; return; }
-    if (performance.now() - xrAt > 2000) { $('mcread').textContent = '運転席に乗れるのは AR の中だけです'; return; }
+    if (!viewMode && performance.now() - xrAt > 2000) { $('mcread').textContent = '運転席に乗れるのは AR の中か「3D で見る」の中だけです'; return; }
     boardOn(unit());
   };
   $('mcctl').onchange = () => { ctl = +$('mcctl').value; pickControl(); };
@@ -567,5 +568,21 @@ export async function initMachines(api) {
     tap(x, y) { if (placing) placeAt(x, y); },
     tick,
     board: boardFrame,
+    // 「3D で見る」（AR なし）：操作盤とコントローラーを使えるようにする・やめる（やめるときは降りる）
+    setView(on) { viewMode = on; if (!on) boardOff(); },
+    // 「3D で見る」で乗っているあいだ、align.js が毎フレーム呼ぶ。目の位置と正面（group の中＝実寸の座標）を返し、空をカメラに付ける。
+    // AR のように世界を動かさず、align.js がカメラを目の所へ動かす
+    viewEye(cam) {
+      if (!board) return null;
+      const u = board.u;
+      u.root.updateMatrix();
+      const ey = eyeOf(u);
+      const toGroup = new THREE.Matrix4().multiplyMatrices(u.root.matrix, u.root.children[0].matrix);
+      if (ey.node) toGroup.multiply(ey.node.matrix);
+      const pos = ey.point.clone().applyMatrix4(toGroup).applyMatrix4(group.matrix);
+      const fwd = ey.forward.clone().transformDirection(toGroup);
+      sky.position.setFromMatrixPosition(cam.matrixWorld);
+      return { pos, fwd };
+    },
   };
 }

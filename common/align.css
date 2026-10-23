@@ -151,3 +151,10 @@ button.armed { background: var(--warn) !important; color: #fff !important; borde
   #overlay .panel { max-height: calc(100vh - 72px); }
   #mcpanel input[type=range] { width: 30vw; }
 }
+
+/* 「3D で見る」（AR なし）で重機を動かすとき：AR の画面からは重機の操作盤（とコントローラーの説明）だけを出す（2026-10-23） */
+#overlay.viewmode { z-index: 61; }
+#overlay.viewmode > :not(.panel):not(#padhelp):not(#padtoast):not(#padcatch) { display: none !important; }
+#overlay.viewmode .panel > .row { display: none !important; }
+#overlay.viewmode .panel { bottom: 10px; }
+#overlay.viewmode .panel > .row:has(#pp) { display: none !important; }
