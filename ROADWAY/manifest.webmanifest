@@ -1,0 +1,17 @@
+{
+  "name": "道路モデル AR",
+  "short_name": "道路モデル",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1f6feb",
+  "icons": [
+    {
+      "src": "../common/ar-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

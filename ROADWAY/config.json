@@ -1,0 +1,34 @@
+{
+  "title": "道路モデル",
+  "version": "20261024212029",
+  "model": "model.glb.enc",
+  "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
+  "modelLayers": [
+    {
+      "name": "新設の標識",
+      "nodes": [
+        "sign_new"
+      ]
+    },
+    {
+      "name": "既設の標識",
+      "nodes": [
+        "sign_ex"
+      ]
+    },
+    {
+      "name": "柵・照明など",
+      "nodes": [
+        "fac"
+      ]
+    }
+  ],
+  "plan": "plan.png.enc",
+  "offline": true,
+  "enc": {
+    "kdf": "PBKDF2-SHA256",
+    "iter": 600000,
+    "salt": "m9au6f+GGRF+IIBOvELxMQ==",
+    "secret": "mYlWLrlidIPgdH4eFYndcDQvZ6zdEQ2dZ5r3ILSOUdUE1xp+Z0TGuO7NXtrKtRXIAo1cP2Ua0B/00Ait/vlC/ye7UWJnCAFQr0n+kD72NxuaDMejBMNLH4d+curpe/FYuGoPRtpHOoFuJC2aq+b8a48KK0ZTCsxL2bPsI0gbejIf7T+Q8lutJcoHa1t1l0mCOKeImAuaJoyk4wa7MC3AbnZMoUCNmkWfV1eX2k9NMdWWUm3k7EmtzN4IOl1Ym5jgnnzi2gMga839t9d8ugi2d1eA/twqqq/5+rwqF6OGs66Ix9WEVRxk84hBZAlunZGT+IeJtkF0DqWNpaRyjIrXqv5ELZnd1wH7hOjsR2lIv/c/1y1UG0QBinSzy4x+unw/VG+JymkoqJpNzQN/pe0ru4Y7"
+  }
+}
