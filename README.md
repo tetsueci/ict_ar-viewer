@@ -177,6 +177,28 @@ python tools/ifc_to_glb.py 入力.ifc models/bridge1.glb
   十字を現実の同じ場所へ当てて「→ 向ける」か「＋ 足す」。
   拾った点は**そのスマホにフォルダごとに覚える**（localStorage。暗号化したフォルダでは同じ鍵で暗号化して置く）。起動画面の基準点の表に出て、「拾った点を消す」で消せる。iPhone の Variant Launch（App Clip）は Safari と別に覚える
 
+### モデルをまとまりごとに出す・隠す（config.json の "modelLayers"）
+
+標識・柵などを AR の中のボタンで**出す・隠す**（2026-10-24 から。書かないフォルダは今まで通り）。
+
+```
+"modelLayers": [ { "name": "新設の標識", "nodes": ["sign_new"] }, { "name": "柵・照明など", "nodes": ["fac"], "on": false } ]
+```
+
+- 1 行＝ボタン 1 つ。`nodes` は model.glb のノードの名前（いくつでも）。`"on": false` なら初めは隠す
+- ボタンは AR の中（「半透明」の隣・固定中は「位置合わせ」の隣）と「3D で見る」の左上に出る。隠したものは重機を置くときも拾わない
+- 道路モデルの DXF からは `dxf_to_site.py` の `--node` と `--toggle` で作る：
+
+  ```bash
+  python tools/dxf_to_site.py <DXF> --out _plain/<フォルダ> --scale 0.001 --origin auto --points "X,Y,Z;X,Y,Z" \
+    --exclude "OLD_*,ZU_*" --lines "PJ_ゼブラ" --sink "ROAD_地面=0.3" \
+    --node "sign_new=SIGN_*" --node "fac=FAC_*" --toggle "新設の標識=sign_new" --toggle "柵・照明など=fac" --compress
+  ```
+
+  - `--node 名前=画層の型,…`：画層（`*` が使える）をまとめて名前の付いたノードにする。どれにも当たらない画層は `base`
+  - `--scale 0.001`：mm の図面（`--points`・`--origin` は m で書く）／`--exclude`：入れない画層／`--lines`：3D ポリラインを線で入れる画層（面から 3 cm 浮かす）
+  - `--sink 型=m`：その画層の面を下げる（路面の下に敷いた地面が路面から顔を出してまだらに見えるとき）／`--compress`：tools/compress.mjs で詰める
+
 ### 重機を置いて動かす（config.json の "machines"）
 
 `"machines"` を書いたフォルダだけ、AR の中に**重機**を出して動かせる（2026-10-08 から。書かないフォルダでは重機のコードもデータも読まない）。

@@ -47,7 +47,16 @@ def flat(verts, tris):
 
 def write_glb(path, groups, name="model", smooth=False):
     """smooth=True なら weld() で頂点をまとめて添字付きで書く（細かいモデルを軽くする）"""
-    bin_parts, views, accessors, materials, prims = [], [], [], [], []
+    return write_glb_parts(path, [(name, groups, None)], smooth=smooth)
+
+
+def write_glb_parts(path, parts, smooth=False):
+    """名前の付いたノードを並べて書く。parts = [(ノード名, {色: (verts, tris)}, {色: 線分 (N,2,3)} か None), …]
+
+    ノードごとに 1 つのメッシュ（色ごとのプリミティブ）。線は LINES のプリミティブ（法線なし。three.js は光を受けない線で描く）。
+    common/align.js は config.json の "modelLayers" の nodes の名前でノードを出す・隠す
+    """
+    bin_parts, views, accessors, materials, nodes, meshes = [], [], [], [], [], []
     offset = 0
 
     def add_view(data, target=34962):
@@ -60,34 +69,15 @@ def write_glb(path, groups, name="model", smooth=False):
         offset += len(raw) + pad
         return len(views) - 1
 
-    for color, (verts, tris) in groups.items():
-        verts = np.asarray(verts, dtype=np.float64)
-        tris = np.asarray(tris, dtype=np.int64).reshape(-1, 3)
-        if len(tris) == 0:
-            continue
-        idx = None
-        if smooth:
-            pos, n, idx = weld(verts, tris)
-            if len(idx) == 0:
-                continue
-            pos, n = pos.astype(np.float32), n.astype(np.float32)
-            idx = idx.astype(np.uint32 if len(pos) > 65535 else np.uint16).reshape(-1)
-        else:
-            pos, n = flat(verts, tris)
-            if pos is None:
-                continue
-
+    def add_pos(pos):
         vp = add_view(pos)
         accessors.append({"bufferView": vp, "componentType": 5126,
                           "count": len(pos), "type": "VEC3",
                           "min": pos.min(axis=0).tolist(),
                           "max": pos.max(axis=0).tolist()})
-        ip = len(accessors) - 1
-        vn = add_view(n)
-        accessors.append({"bufferView": vn, "componentType": 5126,
-                          "count": len(n), "type": "VEC3"})
-        inn = len(accessors) - 1
+        return len(accessors) - 1
 
+    def add_mat(color):
         r, g, b, a = [float(c) for c in color]
         mat = {"pbrMetallicRoughness": {"baseColorFactor": [r, g, b, a],
                                         "metallicFactor": 0.0,
@@ -96,23 +86,56 @@ def write_glb(path, groups, name="model", smooth=False):
         if a < 0.999:
             mat["alphaMode"] = "BLEND"
         materials.append(mat)
-        prim = {"attributes": {"POSITION": ip, "NORMAL": inn}, "material": len(materials) - 1}
-        if idx is not None:
-            vi = add_view(idx, target=34963)
-            accessors.append({"bufferView": vi, "componentType": 5125 if idx.dtype == np.uint32 else 5123,
-                              "count": len(idx), "type": "SCALAR"})
-            prim["indices"] = len(accessors) - 1
-        prims.append(prim)
+        return len(materials) - 1
 
-    if not prims:
+    for name, groups, lines in parts:
+        prims = []
+        for color, (verts, tris) in (groups or {}).items():
+            verts = np.asarray(verts, dtype=np.float64)
+            tris = np.asarray(tris, dtype=np.int64).reshape(-1, 3)
+            if len(tris) == 0:
+                continue
+            idx = None
+            if smooth:
+                pos, n, idx = weld(verts, tris)
+                if len(idx) == 0:
+                    continue
+                pos, n = pos.astype(np.float32), n.astype(np.float32)
+                idx = idx.astype(np.uint32 if len(pos) > 65535 else np.uint16).reshape(-1)
+            else:
+                pos, n = flat(verts, tris)
+                if pos is None:
+                    continue
+            ip = add_pos(pos)
+            vn = add_view(n)
+            accessors.append({"bufferView": vn, "componentType": 5126,
+                              "count": len(n), "type": "VEC3"})
+            prim = {"attributes": {"POSITION": ip, "NORMAL": len(accessors) - 1}, "material": add_mat(color)}
+            if idx is not None:
+                vi = add_view(idx, target=34963)
+                accessors.append({"bufferView": vi, "componentType": 5125 if idx.dtype == np.uint32 else 5123,
+                                  "count": len(idx), "type": "SCALAR"})
+                prim["indices"] = len(accessors) - 1
+            prims.append(prim)
+        for color, segs in (lines or {}).items():
+            pos = np.asarray(segs, dtype=np.float32).reshape(-1, 3)
+            if len(pos) < 2:
+                continue
+            prims.append({"attributes": {"POSITION": add_pos(pos)}, "material": add_mat(color), "mode": 1})
+        if not prims:
+            continue
+        meshes.append({"primitives": prims, "name": name})
+        nodes.append({"mesh": len(meshes) - 1, "name": name})
+
+    if not nodes:
         raise ValueError("書き出す三角形がありません")
 
     gltf = {
         "asset": {"version": "2.0", "generator": "ar-model-viewer/tools/glb.py"},
         "scene": 0,
-        "scenes": [{"nodes": [0]}],
-        "nodes": [{"mesh": 0, "name": name}],
-        "meshes": [{"primitives": prims, "name": name}],
+        "scenes": [{"nodes": list(range(len(nodes)))}],
+        "nodes": nodes,
+        "meshes": meshes,
         "materials": materials,
         "accessors": accessors,
         "bufferViews": views,

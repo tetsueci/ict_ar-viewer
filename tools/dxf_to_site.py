@@ -6,9 +6,12 @@
 - 3DSOLID は DXF から形を読めないので、road.py が書いた road_box.lsp（*kk_box*）から
   ボックスカルバートを作り直す（中心・向き・延長・外形・内空・頂版ハンチ）
 - ★基準点 = 鉛直の LINE（Z 方向に立てた線）の下の端。見つけた順に P1・P2
-- 座標は図面のまま（m・Z 上向き）。原点へ寄せない（基準点で現場に合わせるため）
+- 座標は図面のまま（m・Z 上向き）。原点へ寄せない（基準点で現場に合わせるため）。mm の図面は --scale 0.001
+- 画層のまとまりを名前の付いたノードに分ける（--node 名前=画層の型,…）。--toggle で config.json の
+  "modelLayers"（AR の中で出す・隠すボタン）を書く。--lines の画層は 3D ポリラインを線で入れる
 """
 import argparse
+import fnmatch
 import json
 import math
 import os
@@ -18,7 +21,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
-from glb import copy_page, write_glb, zup_to_yup  # noqa: E402
+from glb import compress_glb, copy_page, write_glb_parts, zup_to_yup  # noqa: E402
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -33,12 +36,32 @@ LAYER_COLOR = {
 }
 # 上に無い画層は名前の頭で決める（上から順に当てる）。plan の重ね順もこの順（下に敷くものから）
 LAYER_RULES = [
+    ("ROAD_地面", (0.60, 0.56, 0.48)),          # 路面の外の地面
     ("GROUND_", (0.62, 0.55, 0.42)),            # 地表面
     ("GI_", (0.58, 0.50, 0.66)),                # 地盤改良
     ("SLOPE_", (0.47, 0.62, 0.36)),             # 法面
     ("WALL_", (0.80, 0.74, 0.60)),              # 補強土壁
+    ("ROAD_白線", (0.96, 0.96, 0.96)),
+    ("ROAD_陸橋", (0.42, 0.42, 0.44)),
     ("ROAD_", (0.33, 0.33, 0.35)),              # 路面
     ("MARK_", (0.96, 0.96, 0.96)),              # 白線
+    ("PJ_ゼブラ", (0.96, 0.96, 0.96)),
+    ("SIGN_板", (0.05, 0.30, 0.65)),            # 標識の板（文字は白）
+    ("EX_標識_板", (0.05, 0.30, 0.65)),
+    ("SIGN_文字", (0.97, 0.97, 0.97)),
+    ("SIGN_基礎", (0.66, 0.66, 0.64)),
+    ("SIGN_", (0.75, 0.76, 0.78)),              # 支柱など
+    ("EX_標識_", (0.75, 0.76, 0.78)),
+    ("SIG_赤", (0.85, 0.10, 0.10)),             # 信号
+    ("SIG_青", (0.10, 0.70, 0.55)),
+    ("SIG_黄", (0.95, 0.75, 0.10)),
+    ("SIG_灯器", (0.25, 0.25, 0.27)),
+    ("SIG_", (0.75, 0.76, 0.78)),
+    ("FAC_ブリンカーライト_灯", (1.00, 0.75, 0.10)),
+    ("FAC_ブリンカーライト", (0.25, 0.25, 0.27)),
+    ("FAC_車線分離標", (0.95, 0.55, 0.10)),
+    ("FAC_ネットフェンス_金網", (0.45, 0.58, 0.45)),
+    ("FAC_", (0.86, 0.86, 0.89)),               # 柵・照明・距離標など
     ("STR_ラバーポール", (0.95, 0.55, 0.10)),
     ("STR_防護柵", (0.86, 0.86, 0.89)),
     ("STR_立入防止柵", (0.45, 0.60, 0.45)),
@@ -63,26 +86,29 @@ def layer_order(lay):
     return -1                                   # RDM_* などは先に（いままでどおり）
 
 
-def read_pairs(path):
-    lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
-    return [(lines[i].strip(), lines[i + 1].strip()) for i in range(0, len(lines) - 1, 2)]
-
-
-def entities(pairs):
-    """ENTITIES の中を (種類, {コード: [値…]}) で返す"""
-    sec, cur, out = None, None, []
-    for i, (c, v) in enumerate(pairs):
-        if c == "0" and v == "SECTION":
-            sec = pairs[i + 1][1]
-            continue
-        if sec != "ENTITIES":
-            continue
-        if c == "0":
-            cur = (v, {})
-            out.append(cur)
-        elif cur is not None:
-            cur[1].setdefault(c, []).append(v)
-    return out
+def entities(path):
+    """ENTITIES の中を (種類, {コード: [値…]}) で 1 つずつ返す（200 MB の DXF も読み切らずに流す）"""
+    sec, cur = None, None
+    with open(path, encoding="utf-8", errors="replace") as fi:
+        while True:
+            c = fi.readline()
+            if not c:
+                break
+            c, v = c.strip(), fi.readline().strip()
+            if c == "0":
+                if cur is not None:
+                    yield cur
+                cur = None
+                if v == "SECTION":
+                    sec = "?"
+                elif sec == "ENTITIES":
+                    cur = (v, {})
+            elif c == "2" and sec == "?":
+                sec = v
+            elif cur is not None:
+                cur[1].setdefault(c, []).append(v)
+    if cur is not None:
+        yield cur
 
 
 def f(d, k, i=0, default=0.0):
@@ -92,52 +118,61 @@ def f(d, k, i=0, default=0.0):
         return default
 
 
-def parse(path):
-    ents = entities(read_pairs(path))
+def parse(path, keep=lambda lay: True, as_line=lambda lay: False, scale=1.0):
+    """keep(画層) が偽の画層は読まない。as_line(画層) が真の画層は 3D ポリラインを線（点の並び）で返す"""
     faces = {}          # 画層 → [(p0,p1,p2), …]
     lines = []
-    i = 0
-    while i < len(ents):
-        kind, d = ents[i]
+    plines = {}         # 画層 → [[p0, p1, …], …]（閉じた線は始点を末尾にも足す）
+    pt = lambda d, a, b, c: (f(d, a) * scale, f(d, b) * scale, f(d, c) * scale)    # noqa: E731
+    poly = None         # 読んでいる POLYLINE（画層, flag, m, n, 頂点, 面の記録）
+
+    def end(poly):
+        lay, flag, m, n, verts, recs = poly
+        if flag & 64:                                        # ポリフェースメッシュ
+            tri = faces.setdefault(lay, [])
+            for r in recs:
+                idx = [abs(k) - 1 for k in r if k != 0]
+                for a in range(1, len(idx) - 1):
+                    tri.append((verts[idx[0]], verts[idx[a]], verts[idx[a + 1]]))
+        elif flag & 16:                                      # M×N のポリゴンメッシュ
+            tri = faces.setdefault(lay, [])
+            cm, cn = flag & 1, flag & 32
+            g = lambda a, b: verts[(a % m) * n + (b % n)]    # noqa: E731
+            for a in range(m - 1 + (1 if cm else 0)):
+                for b in range(n - 1 + (1 if cn else 0)):
+                    tri.append((g(a, b), g(a + 1, b), g(a + 1, b + 1)))
+                    tri.append((g(a, b), g(a + 1, b + 1), g(a, b + 1)))
+        elif flag & 8 and as_line(lay) and len(verts) >= 2:  # 3D ポリライン
+            plines.setdefault(lay, []).append(verts + verts[:1] if flag & 1 else verts)
+
+    for kind, d in entities(path):
+        if kind == "VERTEX":
+            if poly is not None:
+                vf = int(f(d, "70"))
+                if poly[1] & 64 and vf & 128 and not vf & 64:      # 面の記録
+                    poly[5].append([int(f(d, k)) for k in ("71", "72", "73", "74") if k in d])
+                else:
+                    poly[4].append(pt(d, "10", "20", "30"))
+            continue
+        if poly is not None:
+            end(poly)
+            poly = None
         lay = d.get("8", ["0"])[0]
+        if not keep(lay):
+            continue
         if kind == "3DFACE":
-            p = [(f(d, "1%d" % k), f(d, "2%d" % k), f(d, "3%d" % k)) for k in range(4)]
+            p = [pt(d, "1%d" % k, "2%d" % k, "3%d" % k) for k in range(4)]
             tri = faces.setdefault(lay, [])
             tri.append((p[0], p[1], p[2]))
             if p[3] != p[2]:
                 tri.append((p[0], p[2], p[3]))
         elif kind == "LINE":
-            lines.append(((f(d, "10"), f(d, "20"), f(d, "30")), (f(d, "11"), f(d, "21"), f(d, "31")), lay))
+            lines.append((pt(d, "10", "20", "30"), pt(d, "11", "21", "31"), lay))
         elif kind == "POLYLINE":
-            flag = int(f(d, "70"))
-            m, n = int(f(d, "71")), int(f(d, "72"))
-            verts, recs = [], []
-            j = i + 1
-            while j < len(ents) and ents[j][0] == "VERTEX":
-                vd = ents[j][1]
-                vf = int(f(vd, "70"))
-                if flag & 64 and vf & 128 and not vf & 64:          # 面の記録
-                    recs.append([int(f(vd, k)) for k in ("71", "72", "73", "74") if k in vd])
-                else:
-                    verts.append((f(vd, "10"), f(vd, "20"), f(vd, "30")))
-                j += 1
-            tri = faces.setdefault(lay, [])
-            if flag & 64:                                        # ポリフェースメッシュ
-                for r in recs:
-                    idx = [abs(k) - 1 for k in r if k != 0]
-                    for a in range(1, len(idx) - 1):
-                        tri.append((verts[idx[0]], verts[idx[a]], verts[idx[a + 1]]))
-            elif flag & 16:                                      # M×N のポリゴンメッシュ
-                cm, cn = flag & 1, flag & 32
-                g = lambda a, b: verts[(a % m) * n + (b % n)]    # noqa: E731
-                for a in range(m - 1 + (1 if cm else 0)):
-                    for b in range(n - 1 + (1 if cn else 0)):
-                        tri.append((g(a, b), g(a + 1, b), g(a + 1, b + 1)))
-                        tri.append((g(a, b), g(a + 1, b + 1), g(a, b + 1)))
-            i = j
-            continue
-        i += 1
-    return faces, lines
+            poly = (lay, int(f(d, "70")), int(f(d, "71")), int(f(d, "72")), [], [])
+    if poly is not None:
+        end(poly)
+    return faces, lines, plines
 
 
 # ---------- ボックスカルバート（road_box.lsp から） ----------
@@ -272,11 +307,14 @@ def write_plan_points(faces, points, path, title):
     ax = fig.add_subplot(gs[0, :])
     ins = fig.add_subplot(gs[1, 0])
     leg = fig.add_subplot(gs[1, 1])
-    for lay in ["RDM_SLOPE_FILL", "RDM_SLOPE_CONE", "RDM_SUBROAD", "RDM_RAMP", "RDM_ROAD", "RDM_BOX"]:
+    rdm = any(lay.startswith("RDM_") for lay in faces)
+    # RDM_ の無い図面（画層の頭で色を決める現場）は全部の画層を下に敷くものから描く
+    others = [] if rdm else sorted((l for l in faces if faces[l]), key=lambda l: (layer_order(l), l))
+    for lay in ["RDM_SLOPE_FILL", "RDM_SLOPE_CONE", "RDM_SUBROAD", "RDM_RAMP", "RDM_ROAD", "RDM_BOX"] + others:
         if lay not in faces:
             continue
         polys = [[(p[0], p[1]) for p in t] for t in faces[lay]]
-        col = LAYER_COLOR.get(lay, (0.7, 0.7, 0.7))
+        col = LAYER_COLOR.get(lay) or color_of(lay)
         ax.add_collection(PolyCollection(polys, facecolors=[col], edgecolors="none", alpha=0.85 if lay != "RDM_BOX" else 1))
     allp = np.array([p for t in sum(faces.values(), []) for p in t])
     ax.set_xlim(allp[:, 0].min() - 5, allp[:, 0].max() + 5)
@@ -293,10 +331,11 @@ def write_plan_points(faces, points, path, title):
     d = math.hypot(points[1]["x"] - points[0]["x"], points[1]["y"] - points[0]["y"])
     ax.set_title(f"{title}\nP1–P2 {d:.2f} m（点の高さ {points[0]['z']:.2f} / {points[1]['z']:.2f}）", fontsize=12)
     # 基準点のまわりの拡大
-    for lay in ["RDM_SLOPE_FILL", "RDM_SUBROAD", "RDM_BOX"]:
+    for lay in ["RDM_SLOPE_FILL", "RDM_SUBROAD", "RDM_BOX"] + others:
         if lay in faces:
             ins.add_collection(PolyCollection([[(p[0], p[1]) for p in t] for t in faces[lay]],
-                                              facecolors=[LAYER_COLOR.get(lay)], edgecolors="#999999", linewidths=0.2))
+                                              facecolors=[LAYER_COLOR.get(lay) or color_of(lay)],
+                                              edgecolors="#999999" if rdm else "none", linewidths=0.2))
     mx = (points[0]["x"] + points[1]["x"]) / 2
     my = (points[0]["y"] + points[1]["y"]) / 2
     r = max(d, 6) * 1.2
@@ -340,9 +379,30 @@ def main():
     ap.add_argument("--no-plan", action="store_true",
                     help="平面図（plan.png）を作らず、config.json の plan も外す（起動画面の地図で足りる現場）")
     ap.add_argument("--start", help="基準点を前もって決めないとき pick（AR の前に点群の上で選ぶ。点群が要る）")
+    ap.add_argument("--scale", type=float, default=1.0, help="図面の単位から m へ（mm の図面なら 0.001。--points・--origin は m で書く）")
+    ap.add_argument("--exclude", default="", help='入れない画層の型（, 区切り・* が使える）。例 "OLD_*,ZU_*,0"')
+    ap.add_argument("--lines", default="", help='3D ポリラインを線で入れる画層の型（, 区切り）。例 "PJ_ゼブラ"')
+    ap.add_argument("--line-lift", type=float, default=0.03, help="線を面から浮かせる高さ（m。面と重なってちらつかないように）")
+    ap.add_argument("--node", action="append", default=[],
+                    help='画層のまとまりを名前の付いたノードにする "名前=型,型"（何回でも。どれにも当たらない画層は base）')
+    ap.add_argument("--toggle", action="append", default=[],
+                    help='AR の中で出す・隠すボタン "ボタンの名前=ノード,ノード"（何回でも。config.json の modelLayers）')
+    ap.add_argument("--sink", action="append", default=[],
+                    help='画層の面を下げる "型=m"（何回でも。路面の下に敷いた地面が路面から顔を出してまだらに見えるとき）')
+    ap.add_argument("--compress", action="store_true", help="頂点をまとめ、tools/compress.mjs で詰める（大きいモデル）")
     a = ap.parse_args()
 
-    faces, lines = parse(a.dxf)
+    pats = lambda s: [x.strip() for x in s.split(",") if x.strip()]                    # noqa: E731
+    match = lambda lay, ps: any(fnmatch.fnmatchcase(lay, p) for p in ps)              # noqa: E731
+    excl, line_pats = pats(a.exclude), pats(a.lines)
+    node_pats = []
+    for s in a.node:
+        nm, _, ps = s.partition("=")
+        node_pats.append((nm.strip(), pats(ps)))
+    node_of = lambda lay: next((nm for nm, ps in node_pats if match(lay, ps)), "base" if node_pats else "model")  # noqa: E731
+
+    faces, lines, plines = parse(a.dxf, keep=lambda lay: not match(lay, excl),
+                                 as_line=lambda lay: match(lay, line_pats), scale=a.scale)
     box = a.box or os.path.join(os.path.dirname(os.path.abspath(a.dxf)), "road_box.lsp")
     boxes = read_boxes(box) if os.path.exists(box) else []
     for b in boxes:
@@ -372,22 +432,36 @@ def main():
     elif a.origin:
         O = np.array([float(c) for c in a.origin.split(",")])
 
-    groups = {}
+    nodes = {}                                # ノード名 → ({色: (頂点, 三角形)}, {色: 線分})
     for lay, tris in faces.items():
         if not tris:
             continue
+        groups = nodes.setdefault(node_of(lay), ({}, {}))[0]
         col = color_of(lay) + (1.0,)
         v = np.array(tris, float).reshape(-1, 3) - O
+        v[:, 2] -= next((float(d) for p, _, d in (s.rpartition("=") for s in a.sink) if fnmatch.fnmatchcase(lay, p)), 0.0)
         t = np.arange(len(v)).reshape(-1, 3)
         if col in groups:
             v0, t0 = groups[col]
             groups[col] = (np.vstack([v0, zup_to_yup(v)]), np.vstack([t0, t + len(v0)]))
         else:
             groups[col] = (zup_to_yup(v), t)
+    for lay, pls in plines.items():
+        segs = nodes.setdefault(node_of(lay), ({}, {}))[1].setdefault(color_of(lay) + (1.0,), [])
+        for pl in pls:
+            v = zup_to_yup(np.array(pl, float) - O + (0, 0, a.line_lift))
+            segs.append(np.stack([v[:-1], v[1:]], axis=1))
+    parts = [(nm, g, {c: np.concatenate(s) for c, s in ls.items()}) for nm, (g, ls) in nodes.items()]
 
     os.makedirs(a.out, exist_ok=True)
     copy_page(a.out)                          # 新しいフォルダには入口のひな形を写す（中身は common/）
-    n = write_glb(os.path.join(a.out, "model.glb"), groups, name="model")
+    glb_path = os.path.join(a.out, "model.glb")
+    n = write_glb_parts(glb_path, parts, smooth=a.compress)
+    if a.compress:
+        c = compress_glb(glb_path)
+        if c:
+            n = os.path.getsize(glb_path)
+            print(f"  詰めた：{c['inMB']} MB → {c['outMB']} MB（{c['seconds']} 秒）")
     # 前の config.json の項目（pointcloud・finetune など）は残し、この道具が決める項目だけ書き換える
     cpath = os.path.join(a.out, "config.json")
     cfg = {}
@@ -407,6 +481,11 @@ def main():
         cfg.pop("origin", None)
     if a.start:
         cfg["start"] = a.start
+    if a.toggle:
+        cfg["modelLayers"] = []
+        for s in a.toggle:
+            nm, _, ns = s.partition("=")
+            cfg["modelLayers"].append({"name": nm.strip(), "nodes": pats(ns)})
     if a.no_plan:
         cfg.pop("plan", None)
     else:
@@ -419,7 +498,9 @@ def main():
 
     print(f"model.glb {n / 1e6:.2f} MB")
     for lay, tris in sorted(faces.items()):
-        print(f"  {lay:16s} 三角形 {len(tris):6d}")
+        print(f"  {lay:16s} 三角形 {len(tris):6d}  → {node_of(lay)}")
+    for lay, pls in sorted(plines.items()):
+        print(f"  {lay:16s} 線 {len(pls):6d} 本  → {node_of(lay)}")
     for b in boxes:
         print(f"  ボックス {b['name']}  体積 {box_volume(b):.2f} m3")
     if O.any():

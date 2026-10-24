@@ -18,6 +18,8 @@ export async function initMachines(api) {
   const base = cfg.kenkiBase || KENKI;
   const list = (Array.isArray(cfg.machines) ? cfg.machines : []).filter(m => m && m.id);
   if (!list.length) return;
+  // 面に当たったか：隠したまとまり（config.json の modelLayers）の面は拾わない
+  const shownIn = (o, root) => { for (; o && o !== root; o = o.parent) if (!o.visible) return false; return true; };
 
   const [{ poseBackhoe }, { poseRoughTerrainCrane }, { poseCrawlerCrane }, { ratedLoad }, { poseBridgeChecker }, { poseBridgeChecker4 }] = await Promise.all([
     import(base + 'src/backhoe.js'), import(base + 'src/rcrane.js'),
@@ -145,7 +147,7 @@ export async function initMachines(api) {
       const from = top.applyMatrix4(group.matrixWorld);
       const to = u.root.position.clone(); to.y = -10000; to.applyMatrix4(group.matrixWorld);
       down.set(from, to.clone().sub(from).normalize());
-      const h = down.intersectObject(model, true).find(h => h.object.isMesh);
+      const h = down.intersectObject(model, true).find(h => h.object.isMesh && shownIn(h.object, model));
       if (h) u.root.position.y = h.point.applyMatrix4(new THREE.Matrix4().copy(group.matrixWorld).invert()).y;
       u.snap = false;                           // 当たらなければ書いた座標（z＝0）のまま
     }
@@ -293,7 +295,7 @@ export async function initMachines(api) {
     ray.setFromCamera(new THREE.Vector2(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1), cam);
     let best = null;
     if (model) {
-      const h = ray.intersectObject(model, true).find(h => h.object.isMesh);
+      const h = ray.intersectObject(model, true).find(h => h.object.isMesh && shownIn(h.object, model));
       if (h) best = { p: h.point.clone(), d: h.distance };
     }
     if (cloud) {

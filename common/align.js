@@ -379,13 +379,48 @@ group.matrixAutoUpdate = false;
 group.visible = false;
 scene.add(group);
 let modelRoot = null;
+// モデルをまとまりごとに出す・隠す（config.json の "modelLayers"。tools/dxf_to_site.py の --node・--toggle で書く。2026-10-24 から）。
+// 1 行＝ボタン 1 つ：{ "name": "標識", "nodes": ["sign_new"], "on": true }（nodes は model.glb のノードの名前・on: false なら初めは隠す）。
+// AR の中は「半透明」と「位置合わせ」の隣、「3D で見る」は画面の左上に出す。隠したものは重機を置くときも拾わない
+const MLAYERS = (Array.isArray(cfg.modelLayers) ? cfg.modelLayers : []).filter(l => l && l.name && Array.isArray(l.nodes));
+const mlOn = MLAYERS.map(l => l.on !== false);
+const mlBtns = [];
+function mlButton(i) {
+  const b = document.createElement('button');
+  b.dataset.ml = i;
+  b.onclick = () => { mlOn[i] = !mlOn[i]; paintModelLayers(); };
+  mlBtns.push(b);
+  return b;
+}
+for (const id of ['toggle', 'adjust']) {
+  let at = $(id);
+  MLAYERS.forEach((l, i) => { const b = mlButton(i); at.after(b); at = b; });
+}
+const mlView = document.createElement('div');           // 「3D で見る」のときだけ出す
+mlView.id = 'mlview';
+mlView.hidden = true;
+MLAYERS.forEach((l, i) => mlView.appendChild(mlButton(i)));
+document.body.appendChild(mlView);
+function paintModelLayers() {
+  for (const b of mlBtns) {
+    const i = +b.dataset.ml;
+    b.textContent = `${MLAYERS[i].name}：${mlOn[i] ? 'あり' : 'なし'}`;
+    b.classList.toggle('off', !mlOn[i]);
+  }
+  if (!modelRoot) return;
+  MLAYERS.forEach((l, i) => l.nodes.forEach(n => {
+    const o = modelRoot.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(String(n)));
+    if (o) o.visible = mlOn[i];
+  }));
+}
+paintModelLayers();
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const loadGlb = async url => (await loader.parseAsync(await fetchBuf(url), '')).scene;
 loadGlb(cfg.model).then(sc => {
   // 画面の外と判定した部分を描かない処理を切る（モデルの一部が欠けることがあったため。部品の数は少ないので重くならない）
   // 点群より後に描く（点群は奥行きを書かないので、モデルはいつも点群の上に見える）
-  sc.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.renderOrder = 1; } });
-  modelRoot = sc; group.add(modelRoot); picker?.addModel(sc); viewReady();
+  sc.traverse(o => { if (o.isMesh || o.isLine) { o.frustumCulled = false; o.renderOrder = 1; } });
+  modelRoot = sc; group.add(modelRoot); picker?.addModel(sc); paintModelLayers(); viewReady();
 })
   .catch(() => { $('support').textContent = 'モデルを読めませんでした（' + cfg.model + '）'; });
 
@@ -1311,6 +1346,7 @@ async function openViewer() {
     + 'background:rgba(0,0,0,.65);color:#fff;font:inherit;font-size:15px;font-weight:700';
   viewClose.onclick = closeViewer;
   document.body.appendChild(viewClose);
+  mlView.hidden = !MLAYERS.length;
   // 重機（2026-10-23）：AR の画面のボタンの列から重機の操作盤だけを出し、コントローラーも読む。「重機を置く」は画面のタップで置く
   if (mc) {
     $('overlay').classList.add('on', 'viewmode');
@@ -1370,6 +1406,7 @@ function closeViewer() {
   }
   viewCtl.dispose(); viewCtl = null;
   viewClose.remove(); viewClose = null;
+  mlView.hidden = true;
   group.matrix.copy(viewKeep.m); group.matrixWorldNeedsUpdate = true; group.visible = viewKeep.vis; ptMarks.visible = viewKeep.pm;
   renderer.domElement.style.cssText = 'display:none';
 }
