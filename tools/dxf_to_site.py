@@ -319,17 +319,19 @@ def write_plan_points(faces, points, path, title):
     allp = np.array([p for t in sum(faces.values(), []) for p in t])
     ax.set_xlim(allp[:, 0].min() - 5, allp[:, 0].max() + 5)
     ax.set_ylim(allp[:, 1].min() - 5, allp[:, 1].max() + 5)
-    cols = ["#1a6fd6", "#e8590c"]
+    cols = ["#1a6fd6", "#e8590c", "#495057"]          # 3 点目からは灰色
     for k, p in enumerate(points):
-        ax.plot(p["x"], p["y"], "o", ms=9, mfc="white", mec=cols[k], mew=2.5, zorder=5)
-        ax.annotate(p["name"], (p["x"], p["y"]), xytext=(8, 8 if k == 0 else -18), textcoords="offset points",
-                    color=cols[k], fontsize=13, fontweight="bold", zorder=6)
+        many = len(points) > 2
+        ax.plot(p["x"], p["y"], "o", ms=5 if many else 9, mfc="white", mec=cols[min(k, 2)], mew=1.5 if many else 2.5, zorder=5)
+        ax.annotate(p["name"], (p["x"], p["y"]), xytext=(4, 4) if many else (8, 8 if k == 0 else -18), textcoords="offset points",
+                    color=cols[min(k, 2)], fontsize=6 if many else 13, fontweight="bold", zorder=6)
     ax.set_aspect("equal")
     ax.grid(True, color="#dddddd", lw=0.5)
     ax.set_xlabel("X（東）m")
     ax.set_ylabel("Y（北）m")
     d = math.hypot(points[1]["x"] - points[0]["x"], points[1]["y"] - points[0]["y"])
-    ax.set_title(f"{title}\nP1–P2 {d:.2f} m（点の高さ {points[0]['z']:.2f} / {points[1]['z']:.2f}）", fontsize=12)
+    ax.set_title(f"{title}\n基準点 {len(points)} 点" if len(points) > 2 else
+                 f"{title}\nP1–P2 {d:.2f} m（点の高さ {points[0]['z']:.2f} / {points[1]['z']:.2f}）", fontsize=12)
     # 基準点のまわりの拡大
     for lay in ["RDM_SLOPE_FILL", "RDM_SUBROAD", "RDM_BOX"] + others:
         if lay in faces:
@@ -345,8 +347,9 @@ def write_plan_points(faces, points, path, title):
     ins.set_xticks([])
     ins.set_yticks([])
     for k, p in enumerate(points):
-        ins.plot(p["x"], p["y"], "o", ms=8, mfc="white", mec=cols[k], mew=2.5)
-        ins.annotate(p["name"], (p["x"], p["y"]), xytext=(6, 6), textcoords="offset points", color=cols[k], fontweight="bold")
+        ins.plot(p["x"], p["y"], "o", ms=8, mfc="white", mec=cols[min(k, 2)], mew=2.5)
+        ins.annotate(p["name"], (p["x"], p["y"]), xytext=(6, 6), textcoords="offset points", color=cols[min(k, 2)], fontweight="bold",
+                     annotation_clip=True)
     ins.plot([points[0]["x"], points[1]["x"]], [points[0]["y"], points[1]["y"]], "-", color="#333333", lw=1)
     ins.set_title("基準点のまわり", fontsize=9)
     leg.axis("off")
@@ -359,8 +362,11 @@ def write_plan_points(faces, points, path, title):
             leg.text(0.13, yy - 0.015, nm, transform=leg.transAxes, va="center", fontsize=11)
             yy -= 0.11
     leg.text(0.02, yy - 0.04, "〇 基準点", transform=leg.transAxes, fontsize=11, va="center")
-    leg.text(0.02, yy - 0.15, "\n".join(f"{p['name']}  X {p['x']:.3f}  Y {p['y']:.3f}  Z {p['z']:.3f}" for p in points),
-             transform=leg.transAxes, fontsize=10.5, va="top", family="monospace")
+    lines = [f"{p['name']}  X {p['x']:.3f}  Y {p['y']:.3f}  Z {p['z']:.3f}" for p in points[:8]]
+    if len(points) > 8:
+        lines.append(f"…ほか {len(points) - 8} 点（起動画面の表）")
+    leg.text(0.02, yy - 0.15, "\n".join(lines),
+             transform=leg.transAxes, fontsize=10.5, va="top", family=["MS Gothic", "monospace"])
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
@@ -373,6 +379,7 @@ def main():
     ap.add_argument("--title", default="道路モデル")
     ap.add_argument("--out", default=os.path.join(ROOT, "align"))
     ap.add_argument("--points", help='基準点を直接指定 "X,Y,Z;X,Y,Z"（鉛直の LINE より優先）')
+    ap.add_argument("--points-csv", help="基準点の CSV（名前,X,Y,Z[,説明]。1 行目は見出し。何点でもよく、全部を使う）")
     ap.add_argument("--points-note", default="", help="--points の点の説明（config.json の note に入る）")
     ap.add_argument("--origin", help='座標から引く原点 "X,Y,Z" か auto（100 m 単位に丸めた中心）。'
                                      '平面直角座標のままだと float32 で mm が崩れるので、大きい座標なら付ける')
@@ -421,6 +428,13 @@ def main():
         for k, s in enumerate(a.points.split(";")):
             x, y, z = (float(c) for c in s.split(","))
             pts.append({"name": f"P{k + 1}", "x": x, "y": y, "z": z, "note": notes[k] if k < len(notes) else "指定した点"})
+    if a.points_csv:                          # 何点でも（名前,X,Y,Z[,説明]。1 行目は見出し）。全部を config.json に書く
+        import csv
+        with open(a.points_csv, encoding="utf-8-sig", newline="") as fi:
+            rows = list(csv.reader(fi))[1:]
+        pts = [{"name": r[0], "x": float(r[1]), "y": float(r[2]), "z": float(r[3]),
+                "note": r[4] if len(r) > 4 else "指定した点"} for r in rows if len(r) >= 4]
+    use = pts if a.points_csv else pts[:2]
     if len(pts) < 2 and not a.start:
         raise SystemExit(f"鉛直の LINE が {len(pts)} 本しかありません（2 本要る。点群の上で選ぶなら --start pick）")
 
@@ -473,7 +487,7 @@ def main():
         "version": __import__("time").strftime("%Y%m%d%H%M%S"),   # 画像とモデルの読み直し用（ブラウザの覚えた古いものを使わせない）
         "model": "model.glb",
         "coords": "図面の座標（X=東・Y=北・Z=標高、m）",
-        "points": pts[:2],
+        "points": use,
     })
     if O.any():
         cfg["origin"] = {"x": float(O[0]), "y": float(O[1]), "z": float(O[2])}
@@ -494,7 +508,7 @@ def main():
         json.dump(cfg, fo, ensure_ascii=False, indent=2)
         fo.write("\n")
     if not a.no_plan:
-        write_plan(faces, pts[:2], os.path.join(a.out, "plan.png"), a.title)
+        write_plan(faces, use, os.path.join(a.out, "plan.png"), a.title)
 
     print(f"model.glb {n / 1e6:.2f} MB")
     for lay, tris in sorted(faces.items()):

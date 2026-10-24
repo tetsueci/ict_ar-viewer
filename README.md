@@ -197,6 +197,7 @@ python tools/ifc_to_glb.py 入力.ifc models/bridge1.glb
 
   - `--node 名前=画層の型,…`：画層（`*` が使える）をまとめて名前の付いたノードにする。どれにも当たらない画層は `base`
   - `--scale 0.001`：mm の図面（`--points`・`--origin` は m で書く）／`--exclude`：入れない画層／`--lines`：3D ポリラインを線で入れる画層（面から 3 cm 浮かす）
+  - `--points-csv 基準点.csv`：基準点を何点でも（名前,X,Y,Z[,説明]。1 行目は見出し。全部を config.json に書き、平面図にも全部出す）
   - `--sink 型=m`：その画層の面を下げる（路面の下に敷いた地面が路面から顔を出してまだらに見えるとき）／`--compress`：tools/compress.mjs で詰める
 
 ### 重機を置いて動かす（config.json の "machines"）
