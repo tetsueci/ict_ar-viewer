@@ -420,6 +420,17 @@ function paintModelLayers() {
     const o = modelRoot.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(String(n)));
     if (o) o.visible = mlOn[i];
   }));
+  syncMachines();
+}
+// 重機を点群と一緒に出す・隠す（config.json の "machinesWithCloud"）。
+//   true        … 点群が「なし」なら重機も隠す（2026-10-26）
+//   "cloudOnly" … 点群を出していて、モデル（modelLayers）を全部隠しているときだけ重機を出す＝点群表示のときだけ（2026-10-27 AXIO さん）
+function syncMachines() {
+  if (!cfg.machinesWithCloud) return;
+  try {                                         // mc・cloudSize は後ろで宣言している（読み込みの途中に呼ばれたら何もしない）
+    const hide = cloudSize === 0 || (cfg.machinesWithCloud === 'cloudOnly' && mlOn.some(Boolean));
+    mc?.setHidden(hide);
+  } catch (e) { /* まだ宣言の前 */ }
 }
 paintModelLayers();
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -638,7 +649,7 @@ function setCloudSize(k) {
   $('cloud1').textContent = $('cloud2').textContent = t;
   if (k) cloudLast = k;
   if (cloudView) { cloudView.textContent = `点群：${k ? 'あり' : 'なし'}`; cloudView.classList.toggle('off', !k); }
-  if (cfg.machinesWithCloud) mc?.setHidden(k === 0);   // 重機も点群と一緒に出す・隠す（2026-10-26）
+  syncMachines();                               // 重機も点群と一緒に出す・隠す（machinesWithCloud の現場だけ）
   if (!cloud) return;
   cloud.visible = k > 0;
   cloud.traverse(o => { if (o.isPoints) o.material.size = CLOUD_PX[k]; });
@@ -1521,7 +1532,7 @@ if (cfg.machines) {
       setPadMode: on => { padMode = on; $('overlay').classList.toggle('padmode', on); },
       scene,
       setBoarded: on => { mcBoarded = on; thinCloud(); if (!on && !viewCtl) apply(); } }))
-    .then(r => { mc = r; if (cfg.machinesWithCloud) mc.setHidden(cloudSize === 0); })
+    .then(r => { mc = r; syncMachines(); })
     .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
 }
 let liveAt = 0, tileAt = 0;
