@@ -628,6 +628,7 @@ function setCloudSize(k) {
   cloudSize = k;
   const t = ['点群：なし', '点群：小', '点群：大'][k];
   $('cloud1').textContent = $('cloud2').textContent = t;
+  if (cfg.machinesWithCloud) mc?.setHidden(k === 0);   // 重機も点群と一緒に出す・隠す（2026-10-26）
   if (!cloud) return;
   cloud.visible = k > 0;
   cloud.traverse(o => { if (o.isPoints) o.material.size = CLOUD_PX[k]; });
@@ -1510,7 +1511,7 @@ if (cfg.machines) {
       setPadMode: on => { padMode = on; $('overlay').classList.toggle('padmode', on); },
       scene,
       setBoarded: on => { mcBoarded = on; thinCloud(); if (!on && !viewCtl) apply(); } }))
-    .then(r => { mc = r; })
+    .then(r => { mc = r; if (cfg.machinesWithCloud) mc.setHidden(cloudSize === 0); })
     .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
 }
 let liveAt = 0, tileAt = 0;

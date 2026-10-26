@@ -204,8 +204,11 @@ export async function initMachines(api) {
   // 選んだ重機だけを出す（ほかの台は隠すだけで、置いた場所と姿勢は覚えている。2026-10-21 AXIO さん）。
   // 既定は「隠す」。config.json の "machinesSolo": false なら初めから全部出す。操作盤のボタンで切り替える
   let solo = cfg.machinesSolo !== false;
+  // 点群と一緒に出す・隠す（config.json の "machinesWithCloud": true。点群が「なし」なら重機も隠す。2026-10-26 AXIO さん）。
+  // 隠すだけで、置いた場所と姿勢は覚えている
+  let hiddenByCloud = false;
   function applySolo() {
-    units.forEach((u, i) => { u.root.children[0].visible = !solo || i === cur; });   // root.visible は「置いたか」に使うので、中の body を隠す
+    units.forEach((u, i) => { u.root.children[0].visible = !hiddenByCloud && (!solo || i === cur); });   // root.visible は「置いたか」に使うので、中の body を隠す
     const b = document.getElementById('mcsolo');
     if (b) b.textContent = solo ? 'ほかの重機：隠す' : 'ほかの重機：出す';
   }
@@ -568,6 +571,8 @@ export async function initMachines(api) {
       if (units.some(u => u.snap)) { snapPending(); showValue(); }
     },
     tap(x, y) { if (placing) placeAt(x, y); },
+    // 点群の表示に合わせて重機を出す・隠す（align.js の setCloudSize が呼ぶ。"machinesWithCloud": true の現場だけ）
+    setHidden(h) { hiddenByCloud = !!h; applySolo(); },
     tick,
     board: boardFrame,
     // 「3D で見る」（AR なし）：操作盤とコントローラーを使えるようにする・やめる（やめるときは降りる）
