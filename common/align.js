@@ -400,6 +400,14 @@ const mlView = document.createElement('div');           // 「3D で見る」の
 mlView.id = 'mlview';
 mlView.hidden = true;
 MLAYERS.forEach((l, i) => mlView.appendChild(mlButton(i)));
+// 「3D で見る」にも点群の出す・隠す（AR の中の「点群：小/大/なし」と同じ状態。点群のある現場だけ。2026-10-26）
+let cloudView = null, cloudLast = 1;
+if (cfg.pointcloud || cfg.ept) {
+  cloudView = document.createElement('button');
+  cloudView.textContent = '点群：あり';
+  cloudView.onclick = () => setCloudSize(cloudSize ? 0 : cloudLast);
+  mlView.prepend(cloudView);
+}
 document.body.appendChild(mlView);
 function paintModelLayers() {
   for (const b of mlBtns) {
@@ -628,6 +636,8 @@ function setCloudSize(k) {
   cloudSize = k;
   const t = ['点群：なし', '点群：小', '点群：大'][k];
   $('cloud1').textContent = $('cloud2').textContent = t;
+  if (k) cloudLast = k;
+  if (cloudView) { cloudView.textContent = `点群：${k ? 'あり' : 'なし'}`; cloudView.classList.toggle('off', !k); }
   if (cfg.machinesWithCloud) mc?.setHidden(k === 0);   // 重機も点群と一緒に出す・隠す（2026-10-26）
   if (!cloud) return;
   cloud.visible = k > 0;
@@ -1347,7 +1357,7 @@ async function openViewer() {
     + 'background:rgba(0,0,0,.65);color:#fff;font:inherit;font-size:15px;font-weight:700';
   viewClose.onclick = closeViewer;
   document.body.appendChild(viewClose);
-  mlView.hidden = !MLAYERS.length;
+  mlView.hidden = !(MLAYERS.length || cloudView);
   // 重機（2026-10-23）：AR の画面のボタンの列から重機の操作盤だけを出し、コントローラーも読む。「重機を置く」は画面のタップで置く
   if (mc) {
     $('overlay').classList.add('on', 'viewmode');
