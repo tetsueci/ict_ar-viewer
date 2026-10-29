@@ -278,13 +278,20 @@ if (cfg.plan) {
   else $('plan').src = ver(cfg.plan);
 } else $('plancard').remove();
 const f3 = v => Number(v).toFixed(3);
+// "pointsTable": false なら、決まっている基準点は表に数字で出さない（平面図で見せる。2026-10-29 AXIO さん）。
+// 拾った点（Q）は消せるように表に出し、Q が無いあいだは表の欄ごと隠す
+const ptsCard = $('points').closest('.card');
+const syncPtsCard = () => { if (cfg.pointsTable === false) ptsCard.hidden = !PT.some(p => p.picked); };
 function addRow(p) {
+  if (cfg.pointsTable === false && !p.picked) return;
+  if (p.picked) ptsCard.hidden = false;
   $('points').querySelector('tbody').insertAdjacentHTML('beforeend',
     `<tr data-n="${p.name}"><td>${p.name}</td><td>${f3(p.x)}</td><td>${f3(p.y)}</td><td>${f3(p.z)}</td><td>${p.note || ''}</td>`
     + `<td>${p.picked ? `<button class="qdel" type="button" data-n="${p.name}">消す</button>` : ''}</td></tr>`);
   if (p.picked) $('qnote').hidden = false;
 }
 PT.forEach(addRow);
+syncPtsCard();
 // 消す前の確かめは confirm() を使わず「もう一度押す」にする。
 // iPhone の Variant Launch（App Clip）の中では confirm() のダイアログが出ないことがあり、拾った点が消せなかった（2026-10-07 報告）
 function tapTwice(b, text, act) {
@@ -1146,6 +1153,7 @@ function removePoint(k) {
   saveQ();
   $('points').querySelector(`tr[data-n="${name}"]`)?.remove();
   if (!PT.some(p => p.picked)) $('qnote').hidden = true;
+  syncPtsCard();
   $('check').className = '';
   $('check').textContent = `${name} を消した`;
   if (obs.size >= 2) fitAll(); else apply();
