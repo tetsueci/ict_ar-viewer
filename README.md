@@ -301,6 +301,7 @@ AR が使えないスマホ・PC でも、モデルと点群をふつうの画�
   （`--seed` は分離帯の両縁の白線の始まりの点。座標が `-` で始まるので `=` でつなぐ。車線の位置は `--offsets`）
 - `speed` は km/h、`gap` は車の間隔（m）。JSON を直すだけで変わる
 - 車はモデルが表示されているときだけ出る。道路の端まで行くと反対の端へ戻る。左側通行
+- 車の形は `common/cars.glb`（5 車種・CC0。[Quaternius LowPoly Cars](https://quaternius.itch.io/lowpoly-cars) の OBJ を `tools/cars_from_obj.py` でまとめたもの）。車体の色は 1 台ずつ `common/traffic.js` の `COLORS` から付ける
 
 ### 微調整のボタン（config.json の "finetune"）
 

@@ -6,7 +6,7 @@
 // 端まで行くと始まりへ戻る。車は現場モデルの group の子なので、位置合わせ・固定・縮尺に一緒に従う。
 const COLORS = [0xf2f2f2, 0xb8bcc2, 0x23262b, 0x2f5fa8, 0xa83232, 0xe8e4d8];
 
-export async function initTraffic({ THREE, group, siteToGl, cfg, fetchBuf }) {
+export async function initTraffic({ THREE, group, siteToGl, cfg, fetchBuf, loader }) {
   const T = cfg.traffic;
   const data = JSON.parse(new TextDecoder().decode(await fetchBuf(T.file)));
   const v = (T.speed || 60) / 3.6;                     // m/秒
@@ -21,23 +21,31 @@ export async function initTraffic({ THREE, group, siteToGl, cfg, fetchBuf }) {
   });
   const total = lanes.reduce((a, l) => a + l.n, 0);
 
-  // 車の形（X が前・地面が y=0・実寸 m）。下回り・車体・窓の 3 つの箱
-  const part = (x, y, z, w, h, d, color, instanceColor) => {
-    const g = new THREE.BoxGeometry(w, h, d).translate(x, y, z);
-    const m = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.1 }), total);
-    m.frustumCulled = false;
-    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    if (instanceColor) for (let i = 0; i < total; i++) m.setColorAt(i, new THREE.Color(COLORS[i * 7 % COLORS.length]));
-    return m;
-  };
+  // 車の形は cars.glb（tools/cars_from_obj.py が作る。X が前・地面が y=0・実寸 m）。
+  // 1 台＝車体（1 台ずつ色を付ける）とその他（窓・タイヤ）。車種ごとに InstancedMesh を作る
+  const url = new URL('cars.glb' + new URL(import.meta.url).search, import.meta.url).href;
+  const kinds = (await loader.loadAsync(url)).scene.children.filter(o => o.isGroup || o.isMesh);
+  const counts = kinds.map(() => 0);
+  const slots = [];                                     // 車 1 台ごとに [車種, その車種の中の番号]
+  for (let i = 0; i < total; i++) { const c = i * 3 % kinds.length; slots.push([c, counts[c]++]); }
   const root = new THREE.Group();
   root.name = 'traffic';
-  const parts = [
-    part(0, 0.22, 0, 3.8, 0.44, 1.6, 0x15171a, false),
-    part(0, 0.72, 0, 4.4, 0.62, 1.75, 0xffffff, true),
-    part(-0.25, 1.26, 0, 2.3, 0.5, 1.55, 0x20262e, false),
-  ];
-  parts.forEach(m => root.add(m));
+  const meshes = kinds.map((o, c) => {
+    const prims = o.isMesh ? [o] : o.children;
+    return prims.map(p => {
+      const body = p.material.name === 'body';
+      const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: body ? 0.45 : 0.7, metalness: 0.1 });
+      const m = new THREE.InstancedMesh(p.geometry, mat, Math.max(1, counts[c]));
+      m.count = counts[c];
+      m.frustumCulled = false;
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      root.add(m);
+      return { m, body };
+    });
+  });
+  slots.forEach(([c, j], i) => {
+    for (const { m, body } of meshes[c]) if (body) m.setColorAt(j, new THREE.Color(COLORS[i * 7 % COLORS.length]));
+  });
   group.add(root);
 
   const a = new THREE.Vector3(), b = new THREE.Vector3(), x = new THREE.Vector3();
@@ -66,10 +74,11 @@ export async function initTraffic({ THREE, group, siteToGl, cfg, fetchBuf }) {
           y.crossVectors(z, x);
           M.makeBasis(x, y, z);
           M.setPosition(a.add(b).multiplyScalar(0.5));
-          for (const m of parts) m.setMatrixAt(i, M);
+          const [c, j] = slots[i];
+          for (const { m } of meshes[c]) m.setMatrixAt(j, M);
         }
       }
-      for (const m of parts) m.instanceMatrix.needsUpdate = true;
+      for (const list of meshes) for (const { m } of list) m.instanceMatrix.needsUpdate = true;
     },
   };
 }

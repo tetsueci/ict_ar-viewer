@@ -1550,7 +1550,7 @@ if (cfg.machines) {
 // ---------- 走る車（config.json に "traffic" がある現場だけ。中身は traffic.js） ----------
 if (cfg.traffic) {
   import(new URL('traffic.js', import.meta.url).href + new URL(import.meta.url).search)
-    .then(m => m.initTraffic({ THREE, group, siteToGl, cfg, fetchBuf }))
+    .then(m => m.initTraffic({ THREE, group, siteToGl, cfg, fetchBuf, loader }))
     .then(r => { traffic = r; syncTraffic(); })
     .catch(e => { console.warn('車を読めませんでした：' + e.message); });
 }
