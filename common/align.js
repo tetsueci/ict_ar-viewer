@@ -364,8 +364,9 @@ const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 8, 2)
 
 // 十字
 const reticle = new THREE.Group();
+const reticleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
 {
-  const m = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+  const m = reticleMat;
   const parts = [
     new THREE.Mesh(new THREE.RingGeometry(0.09, 0.11, 40).rotateX(-Math.PI / 2), m),
     new THREE.Mesh(new THREE.PlaneGeometry(0.30, 0.012).rotateX(-Math.PI / 2), m),
@@ -1575,6 +1576,7 @@ renderer.setAnimationLoop((time, frame) => {
       reticle.matrixWorldNeedsUpdate = true;
       reticle.visible = aligning && !padMode && menuOpen;    // 固定中・コントローラー操作中は十字（ターゲットマーク）を出さない
       lastHit = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+      reticleMat.color.setHex(byPoint ? 0xffd43b : 0xffffff);   // 白＝面に当たった・黄＝特徴点に当たった（面より当てにならない）
     } else {
       reticle.visible = false;
       lastHit = null;
@@ -1600,9 +1602,14 @@ renderer.setAnimationLoop((time, frame) => {
     if (mcBoarded) mc?.board(frame, refSpace);
 
     // 十字の位置を現場座標で（文字の書き換えは 0.25 秒ごと。毎フレーム書き換えると重く、熱の元になる）
-    if (placed && lastHit && aligning && !mcBoarded) {   // 固定中・乗っているあいだは十字を出さないので座標も出さない
+    if (lastHit && aligning && !mcBoarded) {   // 固定中・乗っているあいだは十字を出さないので座標も出さない
       if (time - liveAt < 250) { renderer.render(scene, camera); return; }
       liveAt = time;
+      // スマホが AR の中で地面からどれだけ上にあると測れているか（2026-11-02。足元を指したのに宙に浮いて見えるとの指摘の切り分け）。
+      // 実際に構えている高さより大きければ、地面を低く測っている
+      const vp = frame.getViewerPose(refSpace)?.transform.position;
+      const meas = vp ? `スマホの高さ ${(vp.y - lastHit.y).toFixed(2)} m・十字まで水平 ${Math.hypot(vp.x - lastHit.x, vp.z - lastHit.z).toFixed(2)} m（${byPoint ? '特徴点' : '面'}）` : '';
+      if (!placed) { $('live').className = ''; $('live').textContent = meas; renderer.render(scene, camera); return; }
       const loc = lastHit.clone().applyMatrix4(tmpM.copy(group.matrix).invert());
       const c = glToSite(loc);
       const n = nearest(-1);
@@ -1610,7 +1617,7 @@ renderer.setAnimationLoop((time, frame) => {
       const cd = cloud && cloud.visible ? cloudDist(loc) : undefined;
       const far = cd === null || (cd !== undefined && cd * s > 0.2);
       $('live').className = far ? 'bad' : '';
-      $('live').textContent = `十字の位置　X ${c.x.toFixed(2)}　Y ${c.y.toFixed(2)}　標高 ${c.z.toFixed(2)}`
+      $('live').textContent = meas + `　十字の位置　X ${c.x.toFixed(2)}　Y ${c.y.toFixed(2)}　標高 ${c.z.toFixed(2)}`
         + (n && n.d < 5 ? `　近い点 ${PT[n.i].name} まで ${(n.d * 100).toFixed(0)} cm` : '')
         + (cd === undefined ? '' : cd === null ? '　点群まで 1 m 以上' : `　点群まで ${(cd * s * 100).toFixed(0)} cm`)
         + (far ? '（ずれが大きい：近くの点で合わせ直す目安）' : '');
