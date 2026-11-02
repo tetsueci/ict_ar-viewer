@@ -1556,6 +1556,7 @@ if (cfg.traffic) {
     .catch(e => { console.warn('車を読めませんでした：' + e.message); });
 }
 let liveAt = 0, tileAt = 0;
+const fmtH = d => `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(2)} m`;   // 高さの差（下がマイナス）
 renderer.setAnimationLoop((time, frame) => {
   traffic?.tick(time);
   if (ept && (placed || viewCtl) && time - eptAt > 500) { eptAt = time; eptUpdate(); }   // EPT：近くの細かい段を読む・遠くは粗い段だけ
@@ -1610,6 +1611,7 @@ renderer.setAnimationLoop((time, frame) => {
       const vp = frame.getViewerPose(refSpace)?.transform.position;
       const meas = vp ? `スマホの高さ ${(vp.y - lastHit.y).toFixed(2)} m・十字まで水平 ${Math.hypot(vp.x - lastHit.x, vp.z - lastHit.z).toFixed(2)} m（${byPoint ? '特徴点' : '面'}）` : '';
       if (!placed) { $('live').className = ''; $('live').textContent = meas; renderer.render(scene, camera); return; }
+      const fromPt = vp ? `固定点からスマホ ${fmtH(vp.y - w.y)}　` : '';
       const loc = lastHit.clone().applyMatrix4(tmpM.copy(group.matrix).invert());
       const c = glToSite(loc);
       const n = nearest(-1);
@@ -1617,10 +1619,13 @@ renderer.setAnimationLoop((time, frame) => {
       const cd = cloud && cloud.visible ? cloudDist(loc) : undefined;
       const far = cd === null || (cd !== undefined && cd * s > 0.2);
       $('live').className = far ? 'bad' : '';
-      $('live').textContent = meas + `　十字の位置　X ${c.x.toFixed(2)}　Y ${c.y.toFixed(2)}　標高 ${c.z.toFixed(2)}`
+      $('live').textContent = fromPt + meas + `　十字の位置　X ${c.x.toFixed(2)}　Y ${c.y.toFixed(2)}　標高 ${c.z.toFixed(2)}`
         + (n && n.d < 5 ? `　近い点 ${PT[n.i].name} まで ${(n.d * 100).toFixed(0)} cm` : '')
         + (cd === undefined ? '' : cd === null ? '　点群まで 1 m 以上' : `　点群まで ${(cd * s * 100).toFixed(0)} cm`)
         + (far ? '（ずれが大きい：近くの点で合わせ直す目安）' : '');
+    } else if (placed && aligning && !mcBoarded) {   // 十字が出ないときも、固定点からの高さは出す（机の下などで地面を見失っても、スマホが下がったかを見られる）
+      const vp = frame.getViewerPose(refSpace)?.transform.position;
+      if (vp && time - liveAt >= 250) { liveAt = time; $('live').className = ''; $('live').textContent = `固定点からスマホ ${fmtH(vp.y - w.y)}`; }
     } else if ($('live').textContent) $('live').textContent = '';   // 空なら書き換えない
   }
   renderer.render(scene, camera);
