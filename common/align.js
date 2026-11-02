@@ -1557,6 +1557,16 @@ if (cfg.traffic) {
 }
 let liveAt = 0, tileAt = 0;
 const fmtH = d => `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(2)} m`;   // 高さの差（下がマイナス）
+// 固定点とスマホの位置関係（2026-11-02。「旗の根元がいつもスマホより下に見える」の切り分け）。
+// スマホの傾き（水平から上が＋）と、スマホから見た固定点の向き（水平から上が＋）を並べる。この 2 つが同じなら固定点は画面の真ん中に出る
+function pivotText(frame) {
+  const t = frame.getViewerPose(refSpace)?.transform;
+  if (!t) return '';
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(new THREE.Quaternion(t.orientation.x, t.orientation.y, t.orientation.z, t.orientation.w));
+  const dy = w.y - t.position.y, dh = Math.hypot(w.x - t.position.x, w.z - t.position.z);
+  const deg = r => `${r >= 0 ? '+' : '−'}${Math.abs(r * 180 / Math.PI).toFixed(0)}°`;
+  return `固定点${PT[pivot].name}からスマホ ${fmtH(-dy)}・水平 ${dh.toFixed(2)} m／固定点の向き ${deg(Math.atan2(dy, dh))}／スマホの傾き ${deg(Math.asin(Math.max(-1, Math.min(1, fwd.y))))}`;
+}
 renderer.setAnimationLoop((time, frame) => {
   traffic?.tick(time);
   if (ept && (placed || viewCtl) && time - eptAt > 500) { eptAt = time; eptUpdate(); }   // EPT：近くの細かい段を読む・遠くは粗い段だけ
@@ -1611,7 +1621,7 @@ renderer.setAnimationLoop((time, frame) => {
       const vp = frame.getViewerPose(refSpace)?.transform.position;
       const meas = vp ? `スマホの高さ ${(vp.y - lastHit.y).toFixed(2)} m・十字まで水平 ${Math.hypot(vp.x - lastHit.x, vp.z - lastHit.z).toFixed(2)} m（${byPoint ? '特徴点' : '面'}）` : '';
       if (!placed) { $('live').className = ''; $('live').textContent = meas; renderer.render(scene, camera); return; }
-      const fromPt = vp ? `固定点からスマホ ${fmtH(vp.y - w.y)}　` : '';
+      const fromPt = vp ? pivotText(frame) + '　' : '';
       const loc = lastHit.clone().applyMatrix4(tmpM.copy(group.matrix).invert());
       const c = glToSite(loc);
       const n = nearest(-1);
@@ -1625,7 +1635,7 @@ renderer.setAnimationLoop((time, frame) => {
         + (far ? '（ずれが大きい：近くの点で合わせ直す目安）' : '');
     } else if (placed && aligning && !mcBoarded) {   // 十字が出ないときも、固定点からの高さは出す（机の下などで地面を見失っても、スマホが下がったかを見られる）
       const vp = frame.getViewerPose(refSpace)?.transform.position;
-      if (vp && time - liveAt >= 250) { liveAt = time; $('live').className = ''; $('live').textContent = `固定点からスマホ ${fmtH(vp.y - w.y)}`; }
+      if (vp && time - liveAt >= 250) { liveAt = time; $('live').className = ''; $('live').textContent = pivotText(frame); }
     } else if ($('live').textContent) $('live').textContent = '';   // 空なら書き換えない
   }
   renderer.render(scene, camera);
