@@ -428,7 +428,11 @@ function paintModelLayers() {
     if (o) o.visible = mlOn[i];
   }));
   syncMachines();
+  syncTraffic();
 }
+// 走る車はモデルと一緒に出す・隠す（モデルのボタンが全部「なし」なら隠す。ボタンの無い現場は出したまま）
+var traffic = null;                             // var：下の paintModelLayers() の最初の呼び出しのときにも読めるように
+function syncTraffic() { traffic?.setVisible(!MLAYERS.length || mlOn.some(Boolean)); }
 // 重機を点群と一緒に出す・隠す（config.json の "machinesWithCloud"）。
 //   true        … 点群が「なし」なら重機も隠す（2026-10-26）
 //   "cloudOnly" … 点群を出していて、モデル（modelLayers）を全部隠しているときだけ重機を出す＝点群表示のときだけ（2026-10-27 AXIO さん）
@@ -1543,8 +1547,16 @@ if (cfg.machines) {
     .then(r => { mc = r; syncMachines(); })
     .catch(e => { $('support').textContent = '重機を読めませんでした：' + e.message; });
 }
+// ---------- 走る車（config.json に "traffic" がある現場だけ。中身は traffic.js） ----------
+if (cfg.traffic) {
+  import(new URL('traffic.js', import.meta.url).href + new URL(import.meta.url).search)
+    .then(m => m.initTraffic({ THREE, group, siteToGl, cfg, fetchBuf }))
+    .then(r => { traffic = r; syncTraffic(); })
+    .catch(e => { console.warn('車を読めませんでした：' + e.message); });
+}
 let liveAt = 0, tileAt = 0;
 renderer.setAnimationLoop((time, frame) => {
+  traffic?.tick(time);
   if (ept && (placed || viewCtl) && time - eptAt > 500) { eptAt = time; eptUpdate(); }   // EPT：近くの細かい段を読む・遠くは粗い段だけ
   if (viewCtl && mc) {                            // 「3D で見る」でも重機を動かす（コントローラー・置く・乗る）
     if (time - tileAt > 500) { tileAt = time; mc.frame(false, true, true); }

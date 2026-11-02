@@ -293,6 +293,15 @@ AR が使えないスマホ・PC でも、モデルと点群をふつうの画�
   範囲は基準点と重機を囲む箱＋`--margin`（既定 25 m）。1 画素 `--res`（既定 0.1 m）
 - `"pointsTable": false` で表を隠す。拾った点（Q）は消せるように表に出す（Q が無いあいだは欄ごと隠す）
 
+### 道路に車を走らせる（config.json の "traffic"）
+
+完成モデルの道路の上を、車が一定の間隔で走り続ける（操作はできない。2026-11-02 から）。書かなければ出ない。
+
+- `python tools/traffic_from_dxf.py <model.dxf> --out <フォルダ> "--seed=X1,Y1;X2,Y2"` → 車線の線 `traffic.json` を書き、config.json に `"traffic": { "file": "traffic.json", "speed": 60, "gap": 60 }` を足す
+  （`--seed` は分離帯の両縁の白線の始まりの点。座標が `-` で始まるので `=` でつなぐ。車線の位置は `--offsets`）
+- `speed` は km/h、`gap` は車の間隔（m）。JSON を直すだけで変わる
+- 車はモデルが表示されているときだけ出る。道路の端まで行くと反対の端へ戻る。左側通行
+
 ### 微調整のボタン（config.json の "finetune"）
 
 回転（⟲ ⟳ 0.5°・0.1°）・高さ（▲ ▼ 5cm）・拡大（拡大：あり／なし）のボタンは、`"finetune": true` を書いたフォルダだけに出す
