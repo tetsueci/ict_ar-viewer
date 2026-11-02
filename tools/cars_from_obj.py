@@ -3,7 +3,7 @@
     python tools/cars_from_obj.py <OBJ のフォルダ> --out common/cars.glb
 
 - 入れる車と、塗り替える部分（車体）の材質は下の CARS に書く
-- 各車は X が前・Y が上・地面が y=0・前後の中心が原点。幅を WIDTH m にそろえる
+- 各車は X が前・Y が上・地面が y=0・前後の中心が原点。長さ・幅・高さを CARS の実寸にする（元の形は低く短いので、3 方向を別々に伸ばす）
 - 1 台のメッシュは 2 つの面の組：車体（白。traffic.js が 1 台ずつ色を付ける）と、その他（窓・タイヤなど。頂点の色）
 """
 import argparse
@@ -13,14 +13,13 @@ import struct
 
 import numpy as np
 
-CARS = {
-    "NormalCar1": ["Blue"],
-    "NormalCar2": ["LightBlue", "Material.007"],
-    "SUV": ["White"],
-    "SportsCar": ["Orange", "DarkOrange"],
-    "SportsCar2": ["White"],
+CARS = {                                                # 車体の材質, (長さ, 幅, 高さ m)
+    "NormalCar1": (["Blue"], (4.6, 1.8, 1.45)),
+    "NormalCar2": (["LightBlue", "Material.007"], (4.0, 1.7, 1.55)),
+    "SUV": (["White"], (4.4, 1.85, 1.75)),
+    "SportsCar": (["Orange", "DarkOrange"], (4.5, 1.85, 1.30)),
+    "SportsCar2": (["White"], (4.4, 1.8, 1.30)),
 }
-WIDTH = 1.8
 BRIGHT = 1.5                                            # 元の色は最大 0.64 と暗いので明るくする
 
 
@@ -55,14 +54,16 @@ def read_obj(path):
     return np.array(V), np.array(N), tris
 
 
-def normalize(V, N, tris):
-    """X が前・地面が 0・前後の中心が原点・幅 WIDTH にする"""
+def normalize(V, N, tris, size):
+    """X が前・地面が 0・前後の中心が原点・実寸 size（長さ, 幅, 高さ）にする"""
     head = sorted({i for m, tri in tris if m == "Headlights" for i, _ in tri})
     front = 1.0 if V[head, 2].mean() > V[:, 2].mean() else -1.0
     # (x, y, z) → 前の向きを +X へ回す（鏡にならない回転）
     rot = lambda A: np.c_[A[:, 2] * front, A[:, 1], -A[:, 0] * front]  # noqa: E731
     V, N = rot(V), rot(N)
-    V = V * (WIDTH / np.ptp(V[:, 2]))
+    k = np.array([size[0], size[2], size[1]]) / np.ptp(V, axis=0)
+    V, N = V * k, N / k
+    N = N / np.linalg.norm(N, axis=1, keepdims=True)
     V = V - [(V[:, 0].min() + V[:, 0].max()) / 2, V[:, 1].min(), (V[:, 2].min() + V[:, 2].max()) / 2]
     return V, N
 
@@ -109,10 +110,10 @@ def main():
         accs.append(acc)
         return len(accs) - 1
 
-    for name, body in CARS.items():
+    for name, (body, size) in CARS.items():
         K = read_mtl(os.path.join(a.obj_dir, name + ".mtl"))
         V, N, tris = read_obj(os.path.join(a.obj_dir, name + ".obj"))
-        V, N = normalize(V, N, tris)
+        V, N = normalize(V, N, tris, size)
         prims = []
         for mat, (p, n, c, i) in enumerate(build(tris, V, N, K, body)):
             prims.append({"attributes": {"POSITION": add(p, 5126, "VEC3", 34962, minmax=True),
