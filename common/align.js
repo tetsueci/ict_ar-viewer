@@ -1375,6 +1375,11 @@ async function openViewer() {
   camera.position.set(c.x + r * 0.5, c.y + r * 0.8, c.z + r * 1.1);
   viewCtl = new OrbitControls(camera, el);
   viewCtl.target.copy(c); viewCtl.maxDistance = r * 6; viewCtl.update();
+  viewCtl.zoomToCursor = true;                     // カーソル（2 本指の真ん中）の方へ寄る
+  el.addEventListener('pointerdown', viewPickDown, { capture: true });   // OrbitControls より先に受ける
+  el.addEventListener('pointerup', viewPickUp, { capture: true });
+  el.addEventListener('pointercancel', viewPickUp, { capture: true });
+  el.addEventListener('wheel', viewPickWheel, { capture: true });
   viewClose = document.createElement('button');
   viewClose.textContent = '戻る';
   viewClose.style.cssText = 'position:fixed;right:16px;top:16px;z-index:63;padding:10px 18px;border:0;border-radius:999px;'
@@ -1389,6 +1394,90 @@ async function openViewer() {
     el.addEventListener('pointerdown', viewDown);
     el.addEventListener('pointerup', viewUp);
   }
+}
+// ---- 視点操作は「押した所の奥行き」で動かす（2026-11-05 AXIO さん。DAM\claude\指示文_Webビューアーの視点操作_20261105.md） ----
+// OrbitControls はパンの速さとズームの量を、画面の中心の奥の 1 点（target）までの距離で決める。
+// 斜めに見て画面の上のほうを掴むと遅く、寄るほど 1 回の寄りが減って最後は止まる。
+// そこで押すたびに、押した所の下にある物（点群・モデル）の奥行きを測り、target を画面の中心の線の上のその奥行きへ置き直す（向きは変わらない）
+function viewPickDepth(mx, my) {
+  const el = renderer.domElement, w = el.clientWidth, h = el.clientHeight, R = 3;   // 半径 3 画素の中でいちばん手前
+  camera.updateMatrixWorld();
+  const ndc = new THREE.Vector2(mx / w * 2 - 1, -(my / h * 2 - 1));
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, camera);
+  const fwd = camera.getWorldDirection(new THREE.Vector3());
+  let best = Infinity;
+  // モデル・重機などの面
+  const meshes = [];
+  group.traverseVisible(o => { if (o.isMesh) meshes.push(o); });
+  for (const hit of ray.intersectObjects(meshes, false)) {
+    const d = hit.point.clone().sub(camera.position).dot(fwd);
+    if (d > camera.near) { best = d; break; }
+  }
+  // 点群：画面へ写して、カーソルから R 画素の中でいちばん手前（描いている分＝drawRange だけ）
+  if (cloud) {
+    const vp = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    const m = new THREE.Matrix4(), sph = new THREE.Sphere();
+    const rx = R / (w / 2), ry = R / (h / 2);
+    cloud.traverseVisible(o => {
+      if (!o.isPoints) return;
+      const g = o.geometry;
+      if (!g.boundingSphere) g.computeBoundingSphere();
+      sph.copy(g.boundingSphere).applyMatrix4(o.matrixWorld);     // かたまりごとに、視線から外れていれば飛ばす
+      if (ray.ray.distanceToPoint(sph.center) > sph.radius) return;
+      const e = m.multiplyMatrices(vp, o.matrixWorld).elements;
+      const p = g.attributes.position.array;
+      const i0 = g.drawRange.start * 3, i1 = Math.min(p.length, (g.drawRange.start + g.drawRange.count) * 3);
+      for (let i = i0; i < i1; i += 3) {
+        const x = p[i], y = p[i + 1], z = p[i + 2];
+        const cw = e[3] * x + e[7] * y + e[11] * z + e[15];   // 透視投影では w ＝ 視線方向の奥行き
+        if (cw <= camera.near || cw >= best) continue;
+        const cx = (e[0] * x + e[4] * y + e[8] * z + e[12]) / cw - ndc.x;
+        if (cx > rx || cx < -rx) continue;
+        const cy = (e[1] * x + e[5] * y + e[9] * z + e[13]) / cw - ndc.y;
+        if (cy > ry || cy < -ry) continue;
+        best = cw;
+      }
+    });
+  }
+  if (best < Infinity) return best;
+  // 何も無い所（空）は target の高さの水平面（Y が上）
+  const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -viewCtl.target.y), new THREE.Vector3());
+  return hit ? hit.sub(camera.position).dot(fwd) : null;
+}
+function viewRetarget(d) {
+  if (!(d > 0.05) || !isFinite(d)) return;
+  const fwd = camera.getWorldDirection(new THREE.Vector3());
+  viewCtl.target.copy(camera.position).addScaledVector(fwd, d);   // 中心の線の上なので向きは変わらない
+  camera.near = Math.min(Math.max(d / 500, 0.01), 1);              // 近くへ寄っても手前が欠けないように
+  camera.updateProjectionMatrix();
+}
+// カーソルの位置は offsetX ではなく clientX − 枠の左（OrbitControls と同じ取り方）
+const viewXY = e => { const r = renderer.domElement.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+const viewPts = new Map();                         // 触っている指（2 本目が付いたら、2 本の真ん中の奥行きで寄る・動かす）
+function viewPickDown(e) {
+  if (!viewCtl || !viewCtl.enabled || viewEye) return;   // 運転席では目の前を中心に回すので触らない
+  const el = renderer.domElement;
+  if (e.pointerType === 'touch') {
+    viewPts.set(e.pointerId, viewXY(e));
+    if (viewPts.size === 1) viewRetarget(viewPickDepth(el.clientWidth / 2, el.clientHeight / 2));
+    else if (viewPts.size === 2) {
+      const [a, b] = [...viewPts.values()];
+      viewRetarget(viewPickDepth((a[0] + b[0]) / 2, (a[1] + b[1]) / 2));
+    }
+    return;
+  }
+  if (e.button === 0) viewRetarget(viewPickDepth(el.clientWidth / 2, el.clientHeight / 2));   // 回転は画面の中心の下
+  else if (e.button === 1 || e.button === 2) viewRetarget(viewPickDepth(...viewXY(e)));      // パン・ズームはカーソルの下
+}
+function viewPickUp(e) { viewPts.delete(e.pointerId); }
+let viewWheel = { t: 0, x: -1e9, y: 0 };
+function viewPickWheel(e) {
+  if (!viewCtl || !viewCtl.enabled || viewEye) return;
+  const t = performance.now(), [x, y] = viewXY(e);
+  // 回すたびに測ると重いので、前回から 400ms 以上空いたか 6 画素以上動いたときだけ
+  if (t - viewWheel.t > 400 || Math.hypot(x - viewWheel.x, y - viewWheel.y) > 6) viewRetarget(viewPickDepth(x, y));
+  viewWheel = { t, x, y };
 }
 let viewTap = null, viewEye = null, viewYaw = 0;
 const viewDown = e => { viewTap = { x: e.clientX, y: e.clientY, t: performance.now() }; };
@@ -1439,6 +1528,13 @@ function closeViewer() {
     renderer.domElement.removeEventListener('pointerup', viewUp);
     viewEye = null;
   }
+  const el = renderer.domElement;
+  el.removeEventListener('pointerdown', viewPickDown, { capture: true });
+  el.removeEventListener('pointerup', viewPickUp, { capture: true });
+  el.removeEventListener('pointercancel', viewPickUp, { capture: true });
+  el.removeEventListener('wheel', viewPickWheel, { capture: true });
+  viewPts.clear();
+  camera.near = 0.01; camera.updateProjectionMatrix();   // AR へ戻るときの既定
   viewCtl.dispose(); viewCtl = null;
   viewClose.remove(); viewClose = null;
   mlView.hidden = true;
